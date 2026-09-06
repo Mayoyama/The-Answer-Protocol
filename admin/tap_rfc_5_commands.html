@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RFC 42TAP — 5. Command Specifications (corrected)</title>
+<style>
+body {
+    font-family: 'Times New Roman', serif;
+    line-height: 1.6;
+    max-width: 1000px;
+    margin: auto;
+    padding: 20px;
+    background-color: #fff;
+}
+h2 {
+    color: #000;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+}
+h3 { color: #333; }
+h4 { color: #333; }
+code {
+    font-family: 'Courier New', monospace;
+    background-color: #f8f8f8;
+    padding: 2px 4px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+pre {
+    font-family: 'Courier New', monospace;
+    background-color: #f8f8f8;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 15px 0;
+}
+</style>
+</head>
+<body>
+
+<h2>5. Command Specifications</h2>
+
+<h3>5.1 Core Commands</h3>
+
+<h4>5.1.1 CONNECT Command</h4>
+<p><strong>Syntax:</strong> <code>CONNECT &lt;username&gt;</code></p>
+<p><strong>Purpose:</strong> Establish player identity for the session</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK connected</code> - Authentication successful</li>
+<li><code>ERR 201 NAME_IN_USE</code> - Username already taken</li>
+</ul>
+
+<h4>5.1.2 LOOK Command</h4>
+<p><strong>Syntax:</strong> <code>LOOK</code></p>
+<p><strong>Purpose:</strong> Retrieve current room state as JSON</p>
+<p><strong>Response:</strong> <code>OK &lt;json-data&gt;</code></p>
+<p><strong>JSON Structure:</strong></p>
+<pre>
+{
+  "room": {
+    "id": "room.identifier",
+    "name": "Room Display Name",
+    "description": "Room description text",
+    "exits": {
+      "north": "room.north_id",
+      "south": "room.south_id"
+    }
+  },
+  "players": ["username1", "username2"],
+  "items": ["item.id1", "item.id2"],
+  "npcs": ["npc.id1", "npc.id2"]
+}
+</pre>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: LOOK
+Server → Client: OK { "room": { "id": "loc.bakery", "name": "Village Bakery", "description": "A warm bakery filled with the scent of fresh bread.", "exits": {"south": "loc.square"} }, "players": ["alice"], "items": ["item.herbs"], "npcs": ["npc.baker"] }
+</pre>
+
+<h4>5.1.3 MOVE Command</h4>
+<p><strong>Syntax:</strong> <code>MOVE &lt;direction&gt;</code></p>
+<p><strong>Purpose:</strong> Move player to adjacent room</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK room=&lt;room-id&gt;</code> - Movement successful</li>
+<li><code>ERR 301 NO_EXIT</code> - Invalid direction</li>
+</ul>
+
+<h4>5.1.4 QUIT Command</h4>
+<p><strong>Syntax:</strong> <code>QUIT</code></p>
+<p><strong>Purpose:</strong> Gracefully terminate connection</p>
+<p><strong>Response:</strong> <code>OK bye</code></p>
+
+<h3>5.2 Communication Commands</h3>
+
+<h4>5.2.1 CHAT Command</h4>
+<p><strong>Syntax:</strong> <code>CHAT &lt;scope&gt; &lt;message&gt;</code></p>
+<p><strong>Purpose:</strong> Send chat message to specified scope</p>
+<p><strong>Scopes:</strong> GLOBAL, ROOM, GROUP</p>
+<p><strong>Response:</strong> <code>OK</code></p>
+
+<h4>5.2.2 WHO Command</h4>
+<p><strong>Syntax:</strong> <code>WHO</code></p>
+<p><strong>Purpose:</strong> Query total player count</p>
+<p><strong>Response:</strong> <code>OK players=&lt;count&gt;</code></p>
+
+<h3>5.3 Group Management Commands</h3>
+
+<h4>5.3.1 GROUP CREATE Command</h4>
+<p><strong>Syntax:</strong> <code>GROUP CREATE</code></p>
+<p><strong>Purpose:</strong> Create a new player group</p>
+<p><strong>Response:</strong> <code>OK group=&lt;group-id&gt;</code></p>
+
+<h4>5.3.2 GROUP INVITE Command</h4>
+<p><strong>Syntax:</strong> <code>GROUP INVITE &lt;username&gt;</code></p>
+<p><strong>Purpose:</strong> Invite player to current group</p>
+<p><strong>Response:</strong> <code>OK</code></p>
+
+<h4>5.3.3 GROUP JOIN Command</h4>
+<p><strong>Syntax:</strong> <code>GROUP JOIN &lt;leader-name&gt;</code></p>
+<p><strong>Purpose:</strong> Join an existing group</p>
+<p><strong>Response:</strong> <code>OK group=&lt;group-id&gt;</code></p>
+
+<h4>5.3.4 GROUP LEAVE Command</h4>
+<p><strong>Syntax:</strong> <code>GROUP LEAVE</code></p>
+<p><strong>Purpose:</strong> Leave current group</p>
+<p><strong>Response:</strong> <code>OK</code></p>
+
+<h3>5.4 Resource Interaction Commands</h3>
+
+<h4>5.4.1 TAKE Command</h4>
+<p><strong>Syntax:</strong> <code>TAKE &lt;item-identifier&gt;</code></p>
+<p><strong>Purpose:</strong> Acquire item from current room</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK taken=&lt;item-id&gt;</code> - Item acquired successfully</li>
+<li><code>ERR 404 ITEM_NOT_FOUND</code> - Item not available</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: LOOK
+Server → Client: OK { "room": { ... }, "items":["item.herbs"], ... }
+Client → Server: TAKE Herbs
+Server → Client: OK taken=item.herbs
+Client → Server: LOOK
+Server → Client: OK { "room": { ... }, "items":[], ... }
+</pre>
+
+<h4>5.4.2 DROP Command</h4>
+<p><strong>Syntax:</strong> <code>DROP &lt;item-identifier&gt;</code></p>
+<p><strong>Purpose:</strong> Release item to current room</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK dropped=&lt;item-id&gt;</code> - Item released successfully</li>
+<li><code>ERR 404 ITEM_NOT_IN_INVENTORY</code> - Item not in inventory</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: DROP item.herbs
+Server → Client: OK dropped=item.herbs
+Client → Server: LOOK
+Server → Client: OK { "room": { ... }, "items":["item.herbs"], ... }
+</pre>
+
+<h4>5.4.3 INVENTORY Command</h4>
+<p><strong>Syntax:</strong> <code>INVENTORY</code></p>
+<p><strong>Purpose:</strong> List player's current items as JSON array</p>
+<p><strong>Response:</strong> <code>OK [&lt;json-item-list&gt;]</code></p>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: INVENTORY
+Server → Client: OK ["item.herbs", "item.loaf_bread"]
+</pre>
+
+<h4>5.4.4 TALK Command</h4>
+<p><strong>Syntax:</strong> <code>TALK &lt;npc-name&gt;</code></p>
+<p><strong>Purpose:</strong> Interact with non-player character</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK &lt;dialogue&gt;</code> - Interaction successful</li>
+<li><code>ERR 404 NPC_NOT_FOUND</code> - NPC not present</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: TALK Baker
+Server → Client: OK Welcome to my bakery!
+</pre>
+
+<h4>5.4.5 ATTACK Command</h4>
+<p><strong>Syntax:</strong> <code>ATTACK &lt;npc-name&gt;</code></p>
+<p><strong>Purpose:</strong> Initiate combat with an enemy NPC</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK &lt;combat-result&gt;</code> - Attack successful, returns combat status</li>
+<li><code>ERR 404 NPC_NOT_FOUND</code> - NPC not present</li>
+<li><code>ERR 405 NPC_NOT_HOSTILE</code> - NPC cannot be attacked</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: ATTACK goblin
+Server → Client: OK {"attacker_hp": 80, "target_hp": 15, "damage": 10, "status": "combat"}
+</pre>
+
+<h4>5.4.6 STATUS Command</h4>
+<p><strong>Syntax:</strong> <code>STATUS</code></p>
+<p><strong>Purpose:</strong> Get player's current health and combat status</p>
+<p><strong>Response:</strong> <code>OK {"hp": &lt;current-hp&gt;, "max_hp": &lt;max-hp&gt;, "status": "&lt;status&gt;"}</code></p>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: STATUS
+Server → Client: OK {"hp": 80, "max_hp": 100, "status": "healthy"}
+</pre>
+
+<h4>5.4.7 QUEST Command</h4>
+<p><strong>Syntax:</strong> <code>QUEST &lt;npc-name&gt;</code></p>
+<p><strong>Purpose:</strong> Request quest from quest-giver NPC</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK &lt;quest-data&gt;</code> - Quest available, returns quest information</li>
+<li><code>ERR 404 NPC_NOT_FOUND</code> - NPC not present</li>
+<li><code>ERR 406 NO_QUEST_AVAILABLE</code> - NPC has no quests or quest already completed</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: QUEST merchant
+Server → Client: OK {"quest_id": "fetch_herbs", "description": "Bring me 3 healing herbs", "reward": "gold_coin", "status": "available"}
+</pre>
+
+<h4>5.4.8 QUESTS Command</h4>
+<p><strong>Syntax:</strong> <code>QUESTS</code></p>
+<p><strong>Purpose:</strong> List all player's active and completed quests</p>
+<p><strong>Response:</strong> <code>OK &lt;quest-list&gt;</code></p>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: QUESTS
+Server → Client: OK [{"quest_id": "fetch_herbs", "status": "active", "progress": "1/3"}, {"quest_id": "defeat_goblin", "status": "completed"}]
+</pre>
+
+</body>
+</html>
