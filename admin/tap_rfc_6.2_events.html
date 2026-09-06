@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RFC 42TAP — 6.2 Event Categories (corrected)</title>
+<style>
+body {
+    font-family: 'Times New Roman', serif;
+    line-height: 1.6;
+    max-width: 1000px;
+    margin: auto;
+    padding: 20px;
+    background-color: #fff;
+}
+h2 {
+    color: #000;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+}
+h3 { color: #333; }
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 20px 0;
+    border: 1px solid #000;
+}
+th, td {
+    border: 1px solid #000;
+    padding: 8px 12px;
+    text-align: left;
+}
+th {
+    background-color: #f0f0f0;
+    font-weight: bold;
+}
+</style>
+</head>
+<body>
+
+<h2>6.2 Event Categories</h2>
+
+<h3>6.2.1 ROOM Events</h3>
+<table>
+<tr><th>Event Type</th><th>Format</th><th>Description</th></tr>
+<tr><td>PRESENCE ENTER</td><td>EVT ROOM PRESENCE ENTER &lt;username&gt;</td><td>Player entered current room</td></tr>
+<tr><td>PRESENCE LEAVE</td><td>EVT ROOM PRESENCE LEAVE &lt;username&gt;</td><td>Player left current room</td></tr>
+<tr><td>CHAT</td><td>EVT ROOM CHAT &lt;username&gt; &lt;message&gt;</td><td>Room-scoped chat message</td></tr>
+</table>
+
+<h3>6.2.2 GLOBAL Events</h3>
+<table>
+<tr><th>Event Type</th><th>Format</th><th>Description</th></tr>
+<tr><td>CHAT</td><td>EVT GLOBAL CHAT &lt;username&gt; &lt;message&gt;</td><td>Server-wide chat message</td></tr>
+</table>
+
+<h3>6.2.3 GROUP Events</h3>
+<table>
+<tr><th>Event Type</th><th>Format</th><th>Description</th></tr>
+<tr><td>INVITE</td><td>EVT GROUP INVITE &lt;leader&gt;</td><td>Group invitation received</td></tr>
+<tr><td>JOIN</td><td>EVT GROUP JOIN &lt;username&gt;</td><td>Player joined group</td></tr>
+<tr><td>LEAVE</td><td>EVT GROUP LEAVE &lt;username&gt;</td><td>Player left group</td></tr>
+<tr><td>CHAT</td><td>EVT GROUP CHAT &lt;username&gt; &lt;message&gt;</td><td>Group-scoped chat message</td></tr>
+</table>
+
+<h3>6.2.4 STATS Events</h3>
+<table>
+<tr><th>Event Type</th><th>Format</th><th>Description</th></tr>
+<tr><td>PLAYERS</td><td>EVT STATS players=&lt;count&gt;</td><td>Updated player count</td></tr>
+</table>
+
+</body>
+</html>

@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RFC: The Answer Protocol - MUD Communication Protocol</title>
+<style>
+body { 
+    font-family: 'Times New Roman', serif; 
+    line-height: 1.6; 
+    max-width: 1000px; 
+    margin: auto; 
+    padding: 20px;
+    background-color: #fff;
+}
+h1 { 
+    text-align: center; 
+    color: #000; 
+    border-bottom: 2px solid #000;
+    padding-bottom: 10px;
+}
+h2 { 
+    color: #000; 
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+}
+h3 { color: #333; }
+.rfc-header {
+    text-align: center;
+    margin-bottom: 40px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+.rfc-header table {
+    width: 100%;
+    border: none;
+    margin: 20px 0;
+}
+.rfc-header td {
+    border: none;
+    padding: 5px;
+    vertical-align: top;
+}
+code { 
+    font-family: 'Courier New', monospace;
+    background-color: #f8f8f8; 
+    padding: 2px 4px; 
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+pre { 
+    font-family: 'Courier New', monospace;
+    background-color: #f8f8f8; 
+    padding: 15px; 
+    border: 1px solid #ddd;
+    border-radius: 5px; 
+    overflow-x: auto;
+    margin: 15px 0;
+}
+table { 
+    border-collapse: collapse; 
+    width: 100%; 
+    margin: 20px 0; 
+    border: 1px solid #000;
+}
+th, td { 
+    border: 1px solid #000; 
+    padding: 8px 12px; 
+    text-align: left; 
+}
+th { 
+    background-color: #f0f0f0; 
+    font-weight: bold;
+}
+.status-info {
+    background-color: #f9f9f9;
+    border: 1px solid #ccc;
+    padding: 15px;
+    margin: 20px 0;
+    border-radius: 5px;
+}
+.toc {
+    background-color: #f9f9f9;
+    border: 1px solid #ccc;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 5px;
+}
+.toc ul {
+    list-style-type: none;
+    padding-left: 0;
+}
+.toc li {
+    margin: 5px 0;
+}
+.section-number {
+    font-weight: bold;
+}
+.abnf {
+    background-color: #fff8dc;
+    border-left: 4px solid #daa520;
+    padding: 10px 15px;
+    margin: 15px 0;
+}
+</style>
+</head>
+<body>
+
+<div class="rfc-header">
+<table>
+<tr>
+<td style="text-align: left;">Network Working Group</td>
+<td style="text-align: right;">Request for Comments: 42TAP</td>
+</tr>
+<tr>
+<td style="text-align: left;">Category: Experimental</td>
+<td style="text-align: right;">42 School</td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: right;">December 2024</td>
+</tr>
+</table>
+</div>
+
+<h1>The Answer Protocol (TAP)<br>
+A TCP-Based Multi-User Dungeon Communication Protocol</h1>
+
+<div class="status-info">
+<h3>Status of this Memo</h3>
+<p>This document specifies an experimental protocol for the Internet community. This protocol is experimental and may be subject to change. Distribution of this memo is unlimited.</p>
+</div>
+
+<div class="status-info">
+<h3>Copyright Notice</h3>
+<p>Copyright (C) 2024 42 School. All Rights Reserved.</p>
+</div>
+
+<div class="toc">
+<h3>Table of Contents</h3>
+<ul>
+<li><span class="section-number">1.</span> Introduction</li>
+<li><span class="section-number">2.</span> Protocol Overview</li>
+<li><span class="section-number">3.</span> Connection Management</li>
+<li><span class="section-number">4.</span> Message Format</li>
+<li><span class="section-number">5.</span> Command Specifications</li>
+<li><span class="section-number">6.</span> Event System</li>
+<li><span class="section-number">7.</span> Error Handling</li>
+<li><span class="section-number">8.</span> Dynamic Resource Management</li>
+<li><span class="section-number">9.</span> Security Considerations</li>
+<li><span class="section-number">10.</span> IANA Considerations</li>
+<li><span class="section-number">11.</span> References</li>
+<li><span class="section-number">12.</span> Authors' Addresses</li>
+</ul>
+</div>
+
+<h2>1. Introduction</h2>
+
+<p>The Answer Protocol (TAP) is a TCP-based application layer protocol designed for real-time multi-user dungeon (MUD) environments. This protocol enables multiple clients to connect to a shared virtual world where they can interact with the environment, communicate with other players, and participate in collaborative gameplay.</p>
+
+<p>TAP provides a simple, text-based command interface with asynchronous event delivery, making it suitable for both command-line and graphical user interfaces. The protocol emphasizes simplicity, extensibility, and real-time interaction capabilities.</p>
+
+<h3>1.1 Requirements Language</h3>
+<p>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.</p>
+
+<h3>1.2 Terminology</h3>
+<ul>
+<li><strong>Client:</strong> An application that connects to a TAP server</li>
+<li><strong>Server:</strong> The TAP protocol implementation that manages the virtual world</li>
+<li><strong>Player:</strong> A connected client with an established identity</li>
+<li><strong>Room:</strong> A discrete location within the virtual world</li>
+<li><strong>Event:</strong> An asynchronous message sent from server to client</li>
+<li><strong>Resource:</strong> An item, NPC, or other interactive object in the world</li>
+</ul>
+
+<h2>2. Protocol Overview</h2>
+
+<p>TAP operates over TCP connections using UTF-8 encoded, line-oriented messages. Each message is terminated by a single newline character (0x0A). The protocol follows a hybrid request-response model with asynchronous event delivery.</p>
+
+<h3>2.1 Protocol Characteristics</h3>
+<ul>
+<li><strong>Transport:</strong> TCP (Transmission Control Protocol)</li>
+<li><strong>Encoding:</strong> UTF-8</li>
+<li><strong>Message Delimiter:</strong> Line Feed (LF, 0x0A)</li>
+<li><strong>Connection Model:</strong> Persistent connections</li>
+<li><strong>Message Flow:</strong> Bidirectional with asynchronous events</li>
+</ul>
+
+<h3>2.2 Protocol State Machine</h3>
+<p>TAP connections progress through the following states:</p>
+<ol>
+<li><strong>DISCONNECTED:</strong> No TCP connection established</li>
+<li><strong>CONNECTED:</strong> TCP connection established, awaiting authentication</li>
+<li><strong>AUTHENTICATED:</strong> Player identity established, ready for commands</li>
+<li><strong>TERMINATED:</strong> Connection closed gracefully or due to error</li>
+</ol>
+
+<h2>3. Connection Management</h2>
+
+<h3>3.1 Connection Establishment</h3>
+<p>Clients MUST establish a TCP connection to the server before sending any TAP messages. Upon successful TCP connection, the client MUST send a CONNECT command to establish player identity.</p>
+
+<div class="abnf">
+<strong>ABNF Syntax:</strong><br>
+connection-sequence = tcp-connect connect-command<br>
+tcp-connect = ; Standard TCP three-way handshake<br>
+connect-command = "CONNECT" SP username CRLF
+</div>
+
+<h3>3.2 Initial Greeting</h3>
+<p>Upon successful TCP connection establishment, the server MUST send an initial greeting message to identify the protocol version:</p>
+
+<pre>
+Server → Client: OK hello proto=1
+</pre>
+
+<h3>3.3 Authentication Process</h3>
+<p>After receiving the greeting, the client MUST send a CONNECT command to establish player identity. The server MUST validate that the requested username is unique among active connections.</p>
+
+<pre>
+Server → Client: OK hello proto=1
+Client → Server: CONNECT alice
+Server → Client: OK connected
+</pre>
+
+<p>If the username is already in use, the server MUST respond with an error:</p>
+
+<pre>
+Client → Server: CONNECT alice
+Server → Client: ERR 201 NAME_IN_USE
+</pre>
+
+<h3>3.3 Connection Termination</h3>
+<p>Connections MAY be terminated gracefully using the QUIT command or abruptly due to network conditions. Servers MUST handle both scenarios and clean up player state appropriately.</p>
+
+<h2>4. Message Format</h2>
+
+<h3>4.1 General Message Structure</h3>
+<p>All TAP messages follow a consistent format:</p>
+
+<div class="abnf">
+<strong>ABNF Syntax:</strong><br>
+message = command-line / response-line / event-line<br>
+command-line = command-name [SP arguments] LF<br>
+response-line = ("OK" / error-response) [SP response-data] LF<br>
+event-line = "EVT" SP event-type SP event-data LF<br>
+command-name = 1*ALPHA<br>
+arguments = 1*VCHAR<br>
+error-response = "ERR" SP error-code SP error-message<br>
+error-code = 3DIGIT<br>
+event-type = 1*ALPHA<br>
+event-data = 1*VCHAR
+</div>
+
+<h3>4.2 Command Messages</h3>
+<p>Command messages are sent from client to server and consist of a command name followed by optional arguments. Command names are case-insensitive.</p>
+
+<h3>4.3 Response Messages</h3>
+<p>Response messages are sent from server to client in reply to command messages. Responses begin with either "OK" for success or "ERR" for failure.</p>
+
+<h3>4.4 Event Messages</h3>
+<p>Event messages are asynchronous notifications sent from server to client. They begin with "EVT" followed by an event type and associated data.</p>
+
+<h2>5. Command Specifications</h2>
+
+<h3>5.1 Core Commands</h3>
+
+<h4>5.1.1 CONNECT Command</h4>
+<p><strong>Syntax:</strong> <code>CONNECT <username></code></p>
+<p><strong>Purpose:</strong> Establish player identity for the session</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK connected</code> - Authentication successful</li>
+<li><code>ERR 201 NAME_IN_USE</code> - Username already taken</li>
+</ul>
+
+<h4>5.1.2 LOOK Command</h4>
+<p><strong>Syntax:</strong> <code>LOOK</code></p>
+<p><strong>Purpose:</strong> Retrieve current room state as JSON</p>
+<p><strong>Response:</strong> <code>OK <json-data></code></p>
+<p><strong>JSON Structure:</strong></p>
+<pre>
+{
+  "room": {
+    "id": "room.identifier",
+    "name": "Room Display Name",
+    "description": "Room description text",
+    "exits": {
+      "north": "room.north_id",
+      "south": "room.south_id"
+    }
+  },
+  "players": ["username1", "username2"],
+  "items": ["item.id1", "item.id2"],
+  "npcs": ["npc.id1", "npc.id2"]
+}
+</pre>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: LOOK
+Server → Client: OK { "room": { "id": "loc.bakery", "name": "Village Bakery", "description": "A warm bakery filled with the scent of fresh bread.", "exits": {"south": "loc.square"} }, "players": ["alice"], "items": ["item.herbs"], "npcs": ["npc.baker"] }
+</pre>
+
+<h4>5.1.3 MOVE Command</h4>
+<p><strong>Syntax:</strong> <code>MOVE <direction></code></p>
+<p><strong>Purpose:</strong> Move player to adjacent room</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK room=<room-id></code> - Movement successful</li>
+<li><code>ERR 301 NO_EXIT</code> - Invalid direction</li>
+</ul>
+
+<h4>5.1.4 QUIT Command</h4>
+<p><strong>Syntax:</strong> <code>QUIT</code></p>
+<p><strong>Purpose:</strong> Gracefully terminate connection</p>
+<p><strong>Response:</strong> <code>OK bye</code></p>
+
+<h3>5.2 Communication Commands</h3>
+
+<h4>5.2.1 CHAT Command</h4>
+<p><strong>Syntax:</strong> <code>CHAT <scope> <message></code></p>
+<p><strong>Purpose:</strong> Send chat message to specified scope</p>
+<p><strong>Scopes:</strong> GLOBAL, ROOM, GROUP</p>
+<p><strong>Response:</strong> <code>OK</code></p>
+
+<h4>5.2.2 WHO Command</h4>
+<p><strong>Syntax:</strong> <code>WHO</code></p>
+<p><strong>Purpose:</strong> Query total player count</p>
+<p><strong>Response:</strong> <code>OK players=<count></code></p>
+
+<h3>5.3 Group Management Commands</h3>
+
+<h4>5.3.1 GROUP CREATE Command</h4>
+<p><strong>Syntax:</strong> <code>GROUP CREATE</code></p>
+<p><strong>Purpose:</strong> Create a new player group</p>
+<p><strong>Response:</strong> <code>OK group=<group-id></code></p>
+
+<h4>5.3.2 GROUP INVITE Command</h4>
+<p><strong>Syntax:</strong> <code>GROUP INVITE <username></code></p>
+<p><strong>Purpose:</strong> Invite player to current group</p>
+<p><strong>Response:</strong> <code>OK</code></p>
+
+<h4>5.3.3 GROUP JOIN Command</h4>
+<p><strong>Syntax:</strong> <code>GROUP JOIN <leader-name></code></p>
+<p><strong>Purpose:</strong> Join an existing group</p>
+<p><strong>Response:</strong> <code>OK group=<group-id></code></p>
+
+<h4>5.3.4 GROUP LEAVE Command</h4>
+<p><strong>Syntax:</strong> <code>GROUP LEAVE</code></p>
+<p><strong>Purpose:</strong> Leave current group</p>
+<p><strong>Response:</strong> <code>OK</code></p>
+
+<h3>5.4 Resource Interaction Commands</h3>
+
+<h4>5.4.1 TAKE Command</h4>
+<p><strong>Syntax:</strong> <code>TAKE <item-identifier></code></p>
+<p><strong>Purpose:</strong> Acquire item from current room</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK taken=<item-id></code> - Item acquired successfully</li>
+<li><code>ERR 404 ITEM_NOT_FOUND</code> - Item not available</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: LOOK
+Server → Client: OK { "room": { ... }, "items":["item.herbs"], ... }
+Client → Server: TAKE Herbs
+Server → Client: OK taken=item.herbs
+Client → Server: LOOK
+Server → Client: OK { "room": { ... }, "items":[], ... }
+</pre>
+
+<h4>5.4.2 DROP Command</h4>
+<p><strong>Syntax:</strong> <code>DROP <item-identifier></code></p>
+<p><strong>Purpose:</strong> Release item to current room</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK dropped=<item-id></code> - Item released successfully</li>
+<li><code>ERR 404 ITEM_NOT_IN_INVENTORY</code> - Item not in inventory</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: DROP item.herbs
+Server → Client: OK dropped=item.herbs
+Client → Server: LOOK
+Server → Client: OK { "room": { ... }, "items":["item.herbs"], ... }
+</pre>
+
+<h4>5.4.3 INVENTORY Command</h4>
+<p><strong>Syntax:</strong> <code>INVENTORY</code></p>
+<p><strong>Purpose:</strong> List player's current items as JSON array</p>
+<p><strong>Response:</strong> <code>OK [<json-item-list>]</code></p>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: INVENTORY
+Server → Client: OK ["item.herbs", "item.loaf_bread"]
+</pre>
+
+<h4>5.4.4 TALK Command</h4>
+<p><strong>Syntax:</strong> <code>TALK <npc-name></code></p>
+<p><strong>Purpose:</strong> Interact with non-player character</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK <dialogue></code> - Interaction successful</li>
+<li><code>ERR 404 NPC_NOT_FOUND</code> - NPC not present</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: TALK Baker
+Server → Client: OK Welcome to my bakery!
+</pre>
+
+<h4>5.4.5 ATTACK Command</h4>
+<p><strong>Syntax:</strong> <code>ATTACK <npc-name></code></p>
+<p><strong>Purpose:</strong> Initiate combat with an enemy NPC</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK <combat-result></code> - Attack successful, returns combat status</li>
+<li><code>ERR 404 NPC_NOT_FOUND</code> - NPC not present</li>
+<li><code>ERR 405 NPC_NOT_HOSTILE</code> - NPC cannot be attacked</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: ATTACK goblin
+Server → Client: OK {"attacker_hp": 80, "target_hp": 15, "damage": 10, "status": "combat"}
+</pre>
+
+<h4>5.4.6 STATUS Command</h4>
+<p><strong>Syntax:</strong> <code>STATUS</code></p>
+<p><strong>Purpose:</strong> Get player's current health and combat status</p>
+<p><strong>Response:</strong> <code>OK {"hp": <current-hp>, "max_hp": <max-hp>, "status": "<status>"}</code></p>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: STATUS
+Server → Client: OK {"hp": 80, "max_hp": 100, "status": "healthy"}
+</pre>
+
+<h4>5.4.7 QUEST Command</h4>
+<p><strong>Syntax:</strong> <code>QUEST <npc-name></code></p>
+<p><strong>Purpose:</strong> Request quest from quest-giver NPC</p>
+<p><strong>Responses:</strong></p>
+<ul>
+<li><code>OK <quest-data></code> - Quest available, returns quest information</li>
+<li><code>ERR 404 NPC_NOT_FOUND</code> - NPC not present</li>
+<li><code>ERR 406 NO_QUEST_AVAILABLE</code> - NPC has no quests or quest already completed</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: QUEST merchant
+Server → Client: OK {"quest_id": "fetch_herbs", "description": "Bring me 3 healing herbs", "reward": "gold_coin", "status": "available"}
+</pre>
+
+<h4>5.4.8 QUESTS Command</h4>
+<p><strong>Syntax:</strong> <code>QUESTS</code></p>
+<p><strong>Purpose:</strong> List all player's active and completed quests</p>
+<p><strong>Response:</strong> <code>OK <quest-list></code></p>
+<p><strong>Example:</strong></p>
+<pre>
+Client → Server: QUESTS
+Server → Client: OK [{"quest_id": "fetch_herbs", "status": "active", "progress": "1/3"}, {"quest_id": "defeat_goblin", "status": "completed"}]
+</pre>
+
+<h2>6. Implementation Notes</h2>
+
+<div class="status-info">
+<h3>6.1 Work in Progress</h3>
+<p><strong>IMPORTANT:</strong> This RFC intentionally leaves certain aspects underspecified to allow for creative implementation by development teams. The following areas require design decisions and justification:</p>
+
+<h4>6.1.1 Combat System Implementation</h4>
+<p>While basic ATTACK and STATUS commands are defined, the following aspects are left to implementers:</p>
+<ul>
+<li><strong>Turn-based mechanics:</strong> How turns are managed, initiative order, and timing</li>
+<li><strong>Damage calculation:</strong> Formulas for attack damage, defense, and critical hits</li>
+<li><strong>Combat states:</strong> How combat begins, ends, and transitions between states</li>
+<li><strong>Additional commands:</strong> DEFEND, FLEE, USE_ITEM, or other combat-specific actions</li>
+<li><strong>Status effects:</strong> Poison, buffs, debuffs, and their duration management</li>
+</ul>
+
+<h4>6.1.2 Quest System Implementation</h4>
+<p>Basic QUEST and QUESTS commands are provided, but implementers must design:</p>
+<ul>
+<li><strong>Quest progression:</strong> How quest objectives are tracked and validated</li>
+<li><strong>Quest completion:</strong> Automatic vs manual completion mechanisms</li>
+<li><strong>Quest rewards:</strong> Distribution and inventory management</li>
+<li><strong>Quest dependencies:</strong> Prerequisites and quest chains</li>
+<li><strong>Additional commands:</strong> COMPLETE_QUEST, ABANDON_QUEST, or similar</li>
+</ul>
+
+<p><strong>Implementation teams MUST document their design choices and provide justification for their combat and quest system implementations in their project README.</strong></p>
+</div>
+
+<h2>7. Event System</h2>
+
+<h3>7.1 Event Message Format</h3>
+<p>Events are asynchronous messages that inform clients of world state changes. All events follow the format:</p>
+
+<pre>EVT <category> <type> <data></pre>
+
+<h3>6.2 Event Categories</h3>
+
+<h4>6.2.1 ROOM Events</h4>
+<table>
+<tr><th>Event Type</th><th>Format</th><th>Description</th></tr>
+<tr><td>PRESENCE ENTER</td><td>EVT ROOM PRESENCE ENTER <username></td><td>Player entered current room</td></tr>
+<tr><td>PRESENCE LEAVE</td><td>EVT ROOM PRESENCE LEAVE <username></td><td>Player left current room</td></tr>
+<tr><td>CHAT</td><td>EVT ROOM CHAT <username> <message></td><td>Room-scoped chat message</td></tr>
+</table>
+
+<h4>6.2.2 GLOBAL Events</h4>
+<table>
+<tr><th>Event Type</th><th>Format</th><th>Description</th></tr>
+<tr><td>CHAT</td><td>EVT GLOBAL CHAT <username> <message></td><td>Server-wide chat message</td></tr>
+</table>
+
+<h4>6.2.3 GROUP Events</h4>
+<table>
+<tr><th>Event Type</th><th>Format</th><th>Description</th></tr>
+<tr><td>INVITE</td><td>EVT GROUP INVITE <leader></td><td>Group invitation received</td></tr>
+<tr><td>JOIN</td><td>EVT GROUP JOIN <username></td><td>Player joined group</td></tr>
+<tr><td>LEAVE</td><td>EVT GROUP LEAVE <username></td><td>Player left group</td></tr>
+<tr><td>CHAT</td><td>EVT GROUP CHAT <username> <message></td><td>Group-scoped chat message</td></tr>
+</table>
+
+<h4>6.2.4 STATS Events</h4>
+<table>
+<tr><th>Event Type</th><th>Format</th><th>Description</th></tr>
+<tr><td>PLAYERS</td><td>EVT STATS players=<count></td><td>Updated player count</td></tr>
+</table>
+
+<h2>8. Error Handling</h2>
+
+<h3>8.1 Error Response Format</h3>
+<p>Error responses follow the format:</p>
+<pre>ERR <code> <message></pre>
+
+<h3>8.2 Standard Error Codes</h3>
+<table>
+<tr><th>Code</th><th>Message</th><th>Description</th></tr>
+<tr><td>201</td><td>NAME_IN_USE</td><td>Requested username already taken</td></tr>
+<tr><td>301</td><td>NO_EXIT</td><td>Invalid movement direction</td></tr>
+<tr><td>401</td><td>NOT_IN_GROUP</td><td>Group operation requires group membership</td></tr>
+<tr><td>402</td><td>ALREADY_IN_GROUP</td><td>Player already belongs to a group</td></tr>
+<tr><td>404</td><td>ITEM_NOT_FOUND</td><td>Requested item not available in room</td></tr>
+<tr><td>404</td><td>ITEM_NOT_IN_INVENTORY</td><td>Requested item not in player inventory</td></tr>
+<tr><td>404</td><td>NPC_NOT_FOUND</td><td>Requested NPC not present in room</td></tr>
+<tr><td>405</td><td>NPC_NOT_HOSTILE</td><td>NPC cannot be attacked (not an enemy)</td></tr>
+<tr><td>406</td><td>NO_QUEST_AVAILABLE</td><td>NPC has no quests or quest already completed</td></tr>
+<tr><td>900</td><td>CONNECTION_FAILED</td><td>Connection establishment failed</td></tr>
+<tr><td>901</td><td>SEND_FAILED</td><td>Message transmission failed</td></tr>
+</table>
+
+<h3>7.3 Error Recovery</h3>
+<p>Clients SHOULD implement appropriate error recovery mechanisms. Non-fatal errors (4xx codes) allow continued operation, while system errors (9xx codes) may require connection re-establishment.</p>
+
+<h2>8. Dynamic Resource Management</h2>
+
+<h3>8.1 Resource Uniqueness</h3>
+<p>TAP implements a dynamic resource management system where items exist as unique instances within the virtual world. This system prevents resource duplication and maintains world state consistency.</p>
+
+<h3>8.2 Item Lifecycle</h3>
+<ol>
+<li><strong>Spawned:</strong> Item exists in a room, available for acquisition</li>
+<li><strong>Held:</strong> Item is in a player's inventory</li>
+<li><strong>Dropped:</strong> Item is released back to a room</li>
+</ol>
+
+<h3>8.3 Resource Identification</h3>
+<p>Resources MAY be identified using either:</p>
+<ul>
+<li><strong>Canonical ID:</strong> Unique identifier (e.g., "item.healing_potion")</li>
+<li><strong>Display Name:</strong> Human-readable name (e.g., "Healing Potion")</li>
+</ul>
+
+<h3>8.4 Multi-word Resource Names</h3>
+<p>The protocol supports multi-word resource names. Clients SHOULD handle names containing spaces appropriately in their user interfaces.</p>
+
+<h2>9. Security Considerations</h2>
+
+<h3>9.1 Authentication</h3>
+<p>TAP provides minimal authentication through username uniqueness. Implementations requiring stronger security SHOULD implement additional authentication mechanisms.</p>
+
+<h3>9.2 Network Protocol Handling</h3>
+<p>TAP implementations MUST correctly handle TCP stream characteristics:</p>
+<ul>
+<li><strong>Message Fragmentation:</strong> Commands may be split across multiple TCP packets. Servers MUST buffer incomplete messages until a complete line is received.</li>
+<li><strong>Message Coalescing:</strong> Multiple commands may arrive in a single TCP packet. Servers MUST process each line-terminated message separately.</li>
+<li><strong>Encoding:</strong> All messages MUST use UTF-8 encoding. Servers MUST handle Unicode characters in usernames and messages without encoding errors.</li>
+<li><strong>Control Characters:</strong> Servers SHOULD either reject or safely handle control characters in messages to prevent terminal manipulation attacks.</li>
+</ul>
+
+<h3>9.3 Input Validation</h3>
+<p>Servers MUST validate all client input to prevent injection attacks and ensure protocol compliance. Malformed messages SHOULD result in appropriate error responses.</p>
+
+<h3>9.4 Resource Limits</h3>
+<p>Implementations SHOULD enforce reasonable limits on:</p>
+<ul>
+<li>Message length (recommended: 1024 bytes per line)</li>
+<li>Connection count</li>
+<li>Resource acquisition per player</li>
+<li>Chat message frequency</li>
+</ul>
+
+<h2>10. IANA Considerations</h2>
+
+<p>This document does not require any IANA actions. TAP is an experimental protocol intended for educational and development purposes.</p>
+
+<h2>11. References</h2>
+
+<h3>11.1 Normative References</h3>
+<ul>
+<li>[RFC2119] Bradner, S., "Key words for use in RFCs to Indicate Requirement Levels", BCP 14, RFC 2119, March 1997.</li>
+<li>[RFC5234] Crocker, D. and P. Overell, "Augmented BNF for Syntax Specifications: ABNF", STD 68, RFC 5234, January 2008.</li>
+</ul>
+
+<h3>11.2 Informative References</h3>
+<ul>
+<li>[RFC793] Postel, J., "Transmission Control Protocol", STD 7, RFC 793, September 1981.</li>
+<li>[RFC3629] Yergeau, F., "UTF-8, a transformation format of ISO 10646", STD 63, RFC 3629, November 2003.</li>
+</ul>
+
+<h2>12. Authors' Addresses</h2>
+
+<pre>
+42 School Network Working Group
+Email: pedago@42.fr
+
+Questions about this document may be directed to the authors.
+</pre>
+
+<hr>
+<p style="text-align: center; color: #666;">
+This document expires six months from the date of publication.
+</p>
+
+</body>
+</html>
