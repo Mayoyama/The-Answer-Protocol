@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"log/slog"
 )
 
 var (
@@ -23,6 +24,7 @@ func groupFuncDispatcher(subcommand, subargs string, player *Player) {
 			group, err := GroupCreate(player)
 			if err != nil {
 				fmt.Fprintln(player.Conn, err.Error())
+				slog.Info(err.Error(), "player", player.Username, "command", subcommand, "subargs", subargs)
 				return
 			}
 			fmt.Fprintln(player.Conn, "OK group=" + group.GroupID)
@@ -31,7 +33,8 @@ func groupFuncDispatcher(subcommand, subargs string, player *Player) {
 			invitee, ok := onlinePlayers[subargs]
 			onlinePlayersMu.Unlock()
 			if !ok {
-				fmt.Fprintln(player.Conn, PlayerNotFound.Error())
+				fmt.Fprintln(player.Conn, PlayerNotFoundErr.Error())
+				slog.Info(PlayerNotFoundErr.Error(), "player", player.Username, "command", subcommand, "subargs", subargs)
 				return
 			}
 			player.PlayerMu.Lock()
@@ -39,22 +42,38 @@ func groupFuncDispatcher(subcommand, subargs string, player *Player) {
 			player.PlayerMu.Unlock()
 			if inParty == nil {
 				fmt.Fprintln(player.Conn, NotInGroupErr.Error())
+				slog.Info(NotInGroupErr.Error(), "player", player.Username, "command", subcommand, "subargs", subargs)
 				return
 			}
-			inParty.GroupInvite(player, invitee)
+			err := inParty.GroupInvite(player, invitee)
+
+			if err != nil {
+				slog.Info(err.Error(), "player", player.Username, "command", subcommand, "subargs", subargs)
+			}
 		case "JOIN":
-			GroupJoin(subargs, player)
+			err := GroupJoin(subargs, player)
+
+			if err != nil {
+				slog.Info(err.Error(), "player", player.Username, "command", subcommand, "subargs", subargs)
+			}
 		case "LEAVE":
 			player.PlayerMu.Lock()
 			inParty := player.GroupInfo
 			player.PlayerMu.Unlock()
 			if inParty == nil {
 				fmt.Fprintln(player.Conn, NotInGroupErr.Error())
+				slog.Info(NotInGroupErr.Error(), "player", player.Username, "command", subcommand, "subargs", subargs)
 				return
 			}
-			inParty.GroupLeave(player)
+
+			err := inParty.GroupLeave(player)
+
+			if err != nil {
+				slog.Info(err.Error(), "player", player.Username, "command", subcommand, "subargs", subargs)
+			}
 		default:
 			fmt.Fprintln(player.Conn, InvalidCommandErr.Error())
+			slog.Info(InvalidCommandErr.Error(), "player", player.Username, "command", subcommand)
 	}
 }
 
