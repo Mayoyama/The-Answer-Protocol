@@ -1,10 +1,5 @@
 package main
 
-import (
-	"fmt"
-	"encoding/json"
-)
-
 type RoomInfo struct {
 	RoomID string 			`json:"id"`
 	Name string				`json:"name"`
