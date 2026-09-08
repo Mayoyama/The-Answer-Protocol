@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 type ProtocolError struct {
-	Code int
+	Code         int
 	ErrorMessage string
 }
 
@@ -24,7 +24,7 @@ var NotLeaderErr = ProtocolError{Code: 403, ErrorMessage: "NOT_GROUP_LEADER"}
 var ItemNotFoundErr = ProtocolError{Code: 404, ErrorMessage: "ITEM_NOT_FOUND"}
 var NotInInvErr = ProtocolError{Code: 404, ErrorMessage: "ITEM_NOT_IN_INVENTORY"}
 var NPCNotFoundErr = ProtocolError{Code: 404, ErrorMessage: "NPC_NOT_FOUND"}
-var PlayerNotFoundErr = ProtocolError{Code: 404, ErrorMessage:  "PLAYER_NOT_FOUND"}
+var PlayerNotFoundErr = ProtocolError{Code: 404, ErrorMessage: "PLAYER_NOT_FOUND"}
 var NPCNotHostileErr = ProtocolError{Code: 405, ErrorMessage: "NPC_NOT_HOSTILE"}
 var NoQuestAvailErr = ProtocolError{Code: 406, ErrorMessage: "NO_QUEST_AVAILABLE"}
 
