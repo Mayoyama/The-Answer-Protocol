@@ -11,8 +11,7 @@ import (
 	"sync"
 	"unicode"
 	"unicode/utf8"
-
-	yml "gopkg.in/yaml.v3"
+	//yml "gopkg.in/yaml.v3"
 )
 
 type LoginStatus int
@@ -139,7 +138,11 @@ func handleTCPConn(conn net.Conn) {
 	}
 
 	if err := scantask.Err(); err != nil {
-		slog.Warn("CONNECTION_READ_ERROR", "err", err, "remote", conn.RemoteAddr().String())
+		if errors.Is(err, net.ErrClosed) {
+			slog.Info("CONNECTION_CLOSED_SAFELY", "remote", conn.RemoteAddr().String())
+		} else {
+			slog.Warn("CONNECTION_READ_ERROR", "err", err, "remote", conn.RemoteAddr().String())
+		}
 	}
 
 	if player != nil {
