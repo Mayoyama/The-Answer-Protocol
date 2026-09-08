@@ -1,0 +1,79 @@
+world:
+  locations:
+    taverne:
+      name: "The Taverne"
+      description: "A dim, smoky room with a long wooden bar and a crackling hearth."
+      exits:
+        east: "town_square"
+      items:
+        - "item.tankard"
+        - "item.lute"
+      spawns:
+        - "george"
+
+    town_square:
+      name: "Town Square"
+      description: "An open cobblestone square with a dry fountain at its center."
+      exits:
+        west: "taverne"
+      items:
+        - "item.wanted_poster"
+        - "item.coin_purse"
+      spawns:
+        - "bertha"
+        - "kassandra"
+
+items:
+  tankard:
+    name: "Dented Tankard"
+    description: "A well-used tankard, still smells faintly of ale."
+    obtainable: true
+
+  lute:
+    name: "Old Lute"
+    description: "A battered lute missing one string."
+    obtainable: true
+
+  wanted_poster:
+    name: "Wanted Poster"
+    description: "A weathered poster with a crude sketch and a bounty amount."
+    obtainable: true
+
+  coin_purse:
+    name: "Small Coin Purse"
+    description: "A leather purse, lighter than it looks."
+    obtainable: true
+
+npcs:
+  george:
+    name: "George"
+    description: "The tavern keeper, wiping down the same mug for the tenth time."
+    dialogue:
+      - "Welcome, traveler. Mind the floorboards."
+      - "Haven't seen a stranger 'round these parts in weeks."
+    stats:
+      hp: 25
+    attackable: false
+    role: "general"
+
+  bertha:
+    name: "Bertha"
+    description: "A stout market vendor arranging crates of vegetables."
+    dialogue:
+      - "Fresh turnips, best in town!"
+      - "Careful where you step, this square gets crowded."
+    stats:
+      hp: 20
+    attackable: false
+    role: "general"
+
+  kassandra:
+    name: "Kassandra"
+    description: "A cloaked figure watching the crowd from the fountain's edge."
+    dialogue:
+      - "They say the old well east of here holds secrets."
+      - "You didn't hear this from me."
+    stats:
+      hp: 18
+    attackable: false
+    role: quest giver

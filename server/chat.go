@@ -15,12 +15,11 @@ func chatDispatcher(scope, message string, player *Player) {
 		pname := player.Username
 		player.PlayerMu.Unlock()
 
-		for p := range onlinePlayers {
-			if onlinePlayers[p].Username == pname {
+		for _, p := range onlinePlayers {
+			if p.Username == pname {
 				continue
 			}
-			channel := onlinePlayers[p].Conn
-			fmt.Fprintln(channel, EvtGlobalChat(pname, message))
+			fmt.Fprintln(p.Conn, EvtGlobalChat(pname, message))
 		}
 
 		fmt.Fprintln(player.Conn, "OK")
@@ -44,12 +43,11 @@ func chatDispatcher(scope, message string, player *Player) {
 		area.ZoneMu.Lock()
 		defer area.ZoneMu.Unlock()
 
-		for p := range area.InZone {
-			if area.InZone[p].Username == pname {
+		for _, p := range area.InZone {
+			if p.Username == pname {
 				continue
 			}
-			channel := area.InZone[p].Conn
-			fmt.Fprintln(channel, EvtZoneChat(pname, message))
+			fmt.Fprintln(p.Conn, EvtZoneChat(pname, message))
 		}
 
 		fmt.Fprintln(player.Conn, "OK")
@@ -69,12 +67,11 @@ func chatDispatcher(scope, message string, player *Player) {
 		inGroup.GroupMu.Lock()
 		defer inGroup.GroupMu.Unlock()
 
-		for member := range inGroup.Members {
-			if member == pname {
+		for k, p := range inGroup.Members {
+			if k == pname {
 				continue
 			}
-			channel := inGroup.Members[member].Conn
-			fmt.Fprintln(channel, EvtPartyChat(pname, message))
+			fmt.Fprintln(p.Conn, EvtPartyChat(pname, message))
 		}
 
 		fmt.Fprintln(player.Conn, "OK")
