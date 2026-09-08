@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -8,6 +9,13 @@ import (
 	"strconv"
 	"strings"
 )
+
+func handleInternalError(conn net.Conn, err error, loginState *LoginStatus, slogKWARGS ...slog.Attr) {
+	fmt.Fprintln(conn, InternalErr.Error())
+	slog.Default().LogAttrs(context.Background(), slog.LevelError, err.Error(), slogKWARGS...)
+	*loginState = LoginClosed
+	conn.Close()
+}
 
 func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatus, player *Player) {
 	switch command {
@@ -29,7 +37,73 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 				conn.Close()
 
 			case "LOOK":
-				//function here
+				player.PlayerMu.Lock()
+				currLoc := player.CurrLoc
+				player.PlayerMu.Unlock()
+
+				if currLoc == "" {
+					handleInternalError(conn, InternalErr, loginState,
+						slog.String("player", player.Username),
+						slog.Any("loc", nil),
+						slog.String("command", command),
+					)
+					return
+				}
+				
+				zonesMu.Lock()
+				area, ok := zones[currLoc]
+				zonesMu.Unlock()
+
+				if !ok {
+					handleInternalError(conn, InternalErr, loginState,
+						slog.String("player", player.Username),
+						slog.String("loc", currLoc),
+						slog.String("command", command),
+					)
+					return
+				}
+
+				area.ZoneMu.Lock()
+				roomInfo := RoomInfo{
+					RoomID: area.ZoneID,
+					Name: area.ZoneName,
+					Description: area.Description,
+					Exits: area.Exits,
+				}
+
+				var players []string
+				for _, p := range area.InZone {
+					players = append(players, p.Username)
+				}
+
+				var items []string
+				for _,item := range area.Items {
+					items = append(items, item.ItemID)
+				}
+
+				var spawns []string
+				for _, npc := range area.NPCs {
+					spawns = append(spawns, npc.NPCID)
+				}
+
+				lookRes := LookResponse{
+					Room: roomInfo,
+					Players: players,
+					Items: items,
+					NPCS: spawns,
+				}
+				area.ZoneMu.Unlock()
+
+				info, err := json.Marshal(lookRes)
+
+				if err != nil {
+					fmt.Fprintln(conn, InternalErr.Error())
+					slog.Error(JSONErr.Error(), "err", err, "player",player.Username, "command", command)
+					return
+				}
+
+				fmt.Fprintf(conn, "OK %s\n", string(info))
+				slog.Info("SYS_MESSAGE", "player", player.Username, "message", string(info), "command", command)
 
 			case "WHO":
 				onlinePlayersMu.Lock()
