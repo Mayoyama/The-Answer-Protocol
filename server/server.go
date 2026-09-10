@@ -7,11 +7,13 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 	"unicode"
 	"unicode/utf8"
-	//yml "gopkg.in/yaml.v3"
 )
 
 type LoginStatus int
@@ -112,11 +114,24 @@ func handleTCPConn(conn net.Conn) {
 	defer conn.Close()
 	fmt.Fprintln(conn, "OK hello proto=1")
 
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetKeepAlive(true)
+		tcpConn.SetKeepAlivePeriod(time.Second * 30)
+	}
+
 	var loginState LoginStatus
 	var player *Player
 
 	scantask := bufio.NewScanner(conn)
-	for scantask.Scan() {
+	idleTimeout := time.Minute * 5
+
+	for {
+		conn.SetReadDeadline(time.Now().Add(idleTimeout))
+
+		if !scantask.Scan() {
+			break
+		}
+
 		line := scantask.Text()
 		parts := strings.SplitN(line, " ", 2)
 
@@ -138,11 +153,17 @@ func handleTCPConn(conn net.Conn) {
 	}
 
 	if err := scantask.Err(); err != nil {
-		if errors.Is(err, net.ErrClosed) {
+		var netErr net.Error
+		switch {
+		case errors.Is(err, net.ErrClosed):
 			slog.Info("CONNECTION_CLOSED_SAFELY", "remote", conn.RemoteAddr().String())
-		} else {
+		case errors.As(err, &netErr) && netErr.Timeout():
+			slog.Warn("CONNECTION_IDLE_TIMEOUT_ERROR", "err", err, "remote", conn.RemoteAddr().String())
+		default:
 			slog.Warn("CONNECTION_READ_ERROR", "err", err, "remote", conn.RemoteAddr().String())
 		}
+	} else {
+		slog.Info("CONNECTION_CLOSED_BY_CLIENT", "remote", conn.RemoteAddr().String())
 	}
 
 	if player != nil {
@@ -198,13 +219,43 @@ func main() {
 	}
 	defer listener.Close()
 
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigCh
+		slog.Warn("SHUTDOWN_SIGNAL_RECEIVED", "signal", sig.String())
+		listener.Close()
+
+		var toCleanUp []*Player
+		onlinePlayersMu.Lock()
+		onlineCount := len(onlinePlayers)
+		for _, p := range onlinePlayers {
+			toCleanUp = append(toCleanUp, p)
+		}
+		slog.Info("PERFORMING_CLEANUP", "players affected", onlineCount)
+		onlinePlayersMu.Unlock()
+
+		for _, p := range toCleanUp {
+			fmt.Fprintln(p.Conn, ConnFailedErr.Error())
+			slog.Info("SYS_MESSAGE", "player", p.Username, "message", ConnFailedErr.Error())
+			p.Conn.Close()
+		}
+	}()
+
 	var currRetries int
 	maxRetries := 5
 	var wg sync.WaitGroup
 
 	for {
 		conn, err := listener.Accept()
+
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				slog.Info("SERVER_SHUTTING_DOWN")
+				break
+			}
+
 			currRetries++
 			if currRetries >= maxRetries {
 				slog.Error(ConnFailedErr.Error(), "err", err)
