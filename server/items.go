@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 )
 
@@ -19,6 +21,18 @@ type Item struct {
 	BaseLoc     *Zone
 }
 
+func resolveItem(input string) (*Item, bool) {
+	itemsMu.Lock()
+	defer itemsMu.Unlock()
+
+	for _, item := range items {
+		if strings.EqualFold(item.ItemID, input) || strings.EqualFold(item.ItemName, input) {
+			return item, true
+		}
+	}
+	return nil, false
+}
+
 func (p *Player) AddItem(itemID string) {
 	p.PlayerMu.Lock()
 	defer p.PlayerMu.Unlock()
@@ -32,10 +46,7 @@ func (p *Player) DropItem(itemID string) {
 }
 
 func (p *Player) itemTake(itemName string) error {
-
-	itemsMu.Lock()
-	i, ok := items[itemName]
-	itemsMu.Unlock()
+	i, ok := resolveItem(itemName)
 	if !ok {
 		return ItemNotFoundErr
 	}
@@ -48,15 +59,15 @@ func (p *Player) itemTake(itemName string) error {
 	}
 
 	currZone.ZoneMu.Lock()
-	if _, ok := currZone.Items[itemName]; !ok {
+	if _, ok := currZone.Items[i.ItemID]; !ok {
 		currZone.ZoneMu.Unlock()
 		return ItemNotFoundErr
 	} else {
-		delete(currZone.Items, itemName)
+		delete(currZone.Items, i.ItemID)
 	}
 	currZone.ZoneMu.Unlock()
 
-	p.AddItem(itemName)
+	p.AddItem(i.ItemID)
 
 	fmt.Fprintln(p.Conn, "OK taken="+i.ItemID)
 	slog.Info("SYS_MESSAGE", "player", p.getPlayerName(), "message", "OK taken="+i.ItemID, "command", "TAKE")
@@ -65,10 +76,7 @@ func (p *Player) itemTake(itemName string) error {
 }
 
 func (p *Player) itemDrop(itemName string) error {
-
-	itemsMu.Lock()
-	i, ok := items[itemName]
-	itemsMu.Unlock()
+	i, ok := resolveItem(itemName)
 	if !ok {
 		return ItemNotFoundErr
 	}
@@ -81,21 +89,42 @@ func (p *Player) itemDrop(itemName string) error {
 	}
 
 	p.PlayerMu.Lock()
-	inBag := p.Inventory[itemName]
+	inBag := p.Inventory[i.ItemID]
 	p.PlayerMu.Unlock()
 
 	if !inBag {
 		return NotInInvErr
 	} else {
-		p.DropItem(itemName)
+		p.DropItem(i.ItemID)
 	}
 
 	currZone.ZoneMu.Lock()
-	currZone.Items[itemName] = i
+	currZone.Items[i.ItemID] = i
 	currZone.ZoneMu.Unlock()
 
 	fmt.Fprintln(p.Conn, "OK dropped="+i.ItemID)
 	slog.Info("SYS_MESSAGE", "player", p.getPlayerName(), "message", "OK dropped="+i.ItemID, "command", "DROP")
 
 	return nil
+}
+
+func printInventory(player *Player, command, args string) {
+	player.PlayerMu.Lock()
+	bag := make([]string, 0, len(player.Inventory))
+
+	for item := range player.Inventory {
+		bag = append(bag, item)
+	}
+
+	sac, err := json.Marshal(bag)
+	player.PlayerMu.Unlock()
+
+	if err != nil {
+		fmt.Fprintln(player.Conn, JSONErr.Error())
+		slog.Error(JSONErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
+		return
+	}
+
+	fmt.Fprintln(player.Conn, "OK", string(sac))
+	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK "+string(sac), "command", command)
 }

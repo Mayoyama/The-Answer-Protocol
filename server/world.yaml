@@ -7,7 +7,7 @@ world:
         east: "town_square"
       items:
         - "item.tankard"
-        - "item.lute"
+        - "item.old_lute"
       spawns:
         - "george"
 
@@ -29,7 +29,7 @@ items:
     description: "A well-used tankard, still smells faintly of ale."
     obtainable: true
 
-  lute:
+  old_lute:
     name: "Old Lute"
     description: "A battered lute missing one string."
     obtainable: true
