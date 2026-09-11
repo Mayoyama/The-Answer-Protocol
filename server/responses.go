@@ -40,6 +40,11 @@ type QuestSummary struct {
 	Progress string `json:"progress,omitempty"`
 }
 
+type WhoResponse struct {
+	RoomPlayers []string `json:"room"`
+	ServerCount int      `json:"server"`
+}
+
 type QuestsResponse []QuestSummary
 
 type InventoryResponse []string

@@ -238,7 +238,7 @@ func main() {
 
 		for _, p := range toCleanUp {
 			fmt.Fprintln(p.Conn, ConnFailedErr.Error())
-			slog.Info("SYS_MESSAGE", "player", p.Username, "message", ConnFailedErr.Error())
+			slog.Info("SYS_MESSAGE", "player", p.getPlayerName(), "message", ConnFailedErr.Error())
 			p.Conn.Close()
 		}
 	}()

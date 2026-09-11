@@ -35,31 +35,16 @@ func NewPlayer(username, startLoc string, conn net.Conn) *Player {
 	}
 }
 
-func (p *Player) AddItem(itemID string) {
-	p.PlayerMu.Lock()
-	defer p.PlayerMu.Unlock()
-	p.Inventory[itemID] = true
-}
-
-func (p *Player) DropItem(itemID string) {
-	p.PlayerMu.Lock()
-	defer p.PlayerMu.Unlock()
-	delete(p.Inventory, itemID)
-}
-
 func (p *Player) CleanupPlayerData() {
-	p.PlayerMu.Lock()
-	inPT := p.GroupInfo
-	pname := p.Username
-	p.PlayerMu.Unlock()
+	inPT := p.getPlayerGroupInfo()
+	pname := p.getPlayerName()
 
 	if inPT != nil {
 		inPT.GroupLeave(p)
 	}
 
-	zonesMu.Lock()
-	zone, zOK := zones[p.CurrLoc]
-	zonesMu.Unlock()
+	currLoc := p.getZoneID()
+	zone, zOK := getZoneObj(currLoc)
 
 	if zOK {
 		zone.ZoneMu.Lock()
