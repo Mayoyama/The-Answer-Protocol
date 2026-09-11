@@ -6,15 +6,53 @@ import (
 	"log/slog"
 )
 
+func handleWHO(player *Player, loginState *LoginStatus, command string) {
+	onlinePlayersMu.Lock()
+	onlineCount := len(onlinePlayers)
+	onlinePlayersMu.Unlock()
+
+	currLoc := player.getZoneID()
+	currZone, ok := getZoneObj(currLoc)
+
+	if !ok {
+		handleInternalError(player.Conn, InternalErr, loginState,
+			slog.String("player", player.getPlayerName()),
+			slog.Any("loc", currLoc),
+			slog.String("command", "WHO"),
+		)
+		return
+	}
+
+	var roomPl []string
+	currZone.ZoneMu.Lock()
+	for _, p := range currZone.InZone {
+		roomPl = append(roomPl, p.getPlayerName())
+	}
+	currZone.ZoneMu.Unlock()
+
+	whoResp := WhoResponse{
+		RoomPlayers: roomPl,
+		ServerCount: onlineCount,
+	}
+
+	info, err := json.Marshal(whoResp)
+
+	if err != nil {
+		fmt.Fprintln(player.Conn, InternalErr.Error())
+		slog.Error(JSONErr.Error(), "err", err, "player", player.getPlayerName(), "command", "WHO")
+		return
+	}
+
+	fmt.Fprintf(player.Conn, "OK %s\n", string(info))
+	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK"+string(info), "command", command)
+}
+
 func handleLook(player *Player, loginState *LoginStatus) {
-	player.PlayerMu.Lock()
-	pname := player.Username
-	currLoc := player.CurrLoc
-	conn := player.Conn
-	player.PlayerMu.Unlock()
+	pname := player.getPlayerName()
+	currLoc := player.getZoneID()
 
 	if currLoc == "" {
-		handleInternalError(conn, InternalErr, loginState,
+		handleInternalError(player.Conn, InternalErr, loginState,
 			slog.String("player", pname),
 			slog.Any("loc", nil),
 			slog.String("command", "LOOK"),
@@ -22,12 +60,10 @@ func handleLook(player *Player, loginState *LoginStatus) {
 		return
 	}
 
-	zonesMu.Lock()
-	area, ok := zones[currLoc]
-	zonesMu.Unlock()
+	area, ok := getZoneObj(currLoc)
 
 	if !ok {
-		handleInternalError(conn, InternalErr, loginState,
+		handleInternalError(player.Conn, InternalErr, loginState,
 			slog.String("player", pname),
 			slog.String("loc", currLoc),
 			slog.String("command", "LOOK"),
@@ -45,7 +81,7 @@ func handleLook(player *Player, loginState *LoginStatus) {
 
 	var players []string
 	for _, p := range area.InZone {
-		players = append(players, p.Username)
+		players = append(players, p.getPlayerName())
 	}
 
 	var items []string
@@ -69,11 +105,54 @@ func handleLook(player *Player, loginState *LoginStatus) {
 	info, err := json.Marshal(lookRes)
 
 	if err != nil {
-		fmt.Fprintln(conn, InternalErr.Error())
+		fmt.Fprintln(player.Conn, InternalErr.Error())
 		slog.Error(JSONErr.Error(), "err", err, "player", pname, "command", "LOOK")
 		return
 	}
 
-	fmt.Fprintf(conn, "OK %s\n", string(info))
+	fmt.Fprintf(player.Conn, "OK %s\n", string(info))
 	slog.Info("SYS_MESSAGE", "player", pname, "message", string(info), "command", "LOOK")
+}
+
+func printStatus(player *Player, command, args string) {
+	player.PlayerMu.Lock()
+	playerStats := PlayerStatusResponse{
+		HP:     player.CurrHP,
+		MaxHP:  player.MaxHP,
+		Status: player.Status,
+	}
+
+	statPrint, err := json.Marshal(playerStats)
+	player.PlayerMu.Unlock()
+
+	if err != nil {
+		fmt.Fprintln(player.Conn, JSONErr.Error())
+		slog.Error(JSONErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
+		return
+	}
+
+	fmt.Fprintln(player.Conn, "OK", string(statPrint))
+	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK "+string(statPrint), "command", command)
+
+}
+
+func printInventory(player *Player, command, args string) {
+	player.PlayerMu.Lock()
+	bag := make([]string, 0, len(player.Inventory))
+
+	for item := range player.Inventory {
+		bag = append(bag, item)
+	}
+
+	sac, err := json.Marshal(bag)
+	player.PlayerMu.Unlock()
+
+	if err != nil {
+		fmt.Fprintln(player.Conn, JSONErr.Error())
+		slog.Error(JSONErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
+		return
+	}
+
+	fmt.Fprintln(player.Conn, "OK", string(sac))
+	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK "+string(sac), "command", command)
 }

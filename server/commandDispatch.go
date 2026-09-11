@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
-	"strconv"
 	"strings"
 )
 
@@ -21,18 +19,18 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 	switch command {
 	case "CONNECT":
 		fmt.Fprintln(conn, AlreadyConnErr.Error())
-		slog.Info(AlreadyConnErr.Error(), "player", player.Username, "command", command, "args", args)
+		slog.Info(AlreadyConnErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
 
 	case "LOOK", "QUIT", "WHO", "STATUS", "INVENTORY", "QUESTS":
 		if args != "" {
 			fmt.Fprintln(conn, InvalidArgsErr.Error())
-			slog.Info(InvalidArgsErr.Error(), "player", player.Username, "command", command, "args", nil)
+			slog.Info(InvalidArgsErr.Error(), "player", player.getPlayerName(), "command", command, "args", nil)
 
 		} else {
 			switch command {
 			case "QUIT":
 				fmt.Fprintln(conn, "OK bye")
-				slog.Info("PLAYER_QUIT", "player", player.Username, "command", command)
+				slog.Info("PLAYER_QUIT", "player", player.getPlayerName(), "command", command)
 				*loginState = LoginClosed
 				conn.Close()
 
@@ -40,49 +38,13 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 				handleLook(player, loginState)
 
 			case "WHO":
-				onlinePlayersMu.Lock()
-				defer onlinePlayersMu.Unlock()
-				fmt.Fprintf(conn, "OK players=%d\n", len(onlinePlayers))
-				slog.Info("SYS_MESSAGE", "player", player.Username, "message", "OK players="+strconv.Itoa(len(onlinePlayers)), "command", command)
+				handleWHO(player, loginState, command)
 
 			case "STATUS":
-				player.PlayerMu.Lock()
-				defer player.PlayerMu.Unlock()
-				playerStats := PlayerStatusResponse{
-					HP:     player.CurrHP,
-					MaxHP:  player.MaxHP,
-					Status: player.Status,
-				}
-				statPrint, err := json.Marshal(playerStats)
-
-				if err != nil {
-					fmt.Fprintln(conn, JSONErr.Error())
-					slog.Error(JSONErr.Error(), "player", player.Username, "command", command, "args", args)
-					return
-				}
-
-				fmt.Fprintln(conn, "OK", string(statPrint))
-				slog.Info("SYS_MESSAGE", "player", player.Username, "message", "OK "+string(statPrint), "command", command)
+				printStatus(player, command, args)
 
 			case "INVENTORY":
-				player.PlayerMu.Lock()
-				defer player.PlayerMu.Unlock()
-
-				bag := make([]string, 0, len(player.Inventory))
-				for item := range player.Inventory {
-					bag = append(bag, item)
-				}
-
-				sac, err := json.Marshal(bag)
-
-				if err != nil {
-					fmt.Fprintln(conn, JSONErr.Error())
-					slog.Error(JSONErr.Error(), "player", player.Username, "command", command, "args", args)
-					return
-				}
-
-				fmt.Fprintln(conn, "OK", string(sac))
-				slog.Info("SYS_MESSAGE", "player", player.Username, "message", "OK "+string(sac), "command", command)
+				printInventory(player, command, args)
 
 			case "QUESTS":
 				//function here
@@ -92,7 +54,7 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 		if args == "" {
 			//TODO: Need to comment about custom error in readme
 			fmt.Fprintln(conn, MissingArgsErr.Error())
-			slog.Info(MissingArgsErr.Error(), "player", player.Username, "command", command, "args", args)
+			slog.Info(MissingArgsErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
 
 		} else {
 			subparts := strings.SplitN(args, " ", 2)
@@ -112,10 +74,20 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 				groupFuncDispatcher(subparts[0], subargs, player)
 
 			case "TAKE":
-				//function here
+				err := player.itemTake(args)
+
+				if err != nil {
+					fmt.Fprintln(player.Conn, err.Error())
+					slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", err.Error(), "command", command)
+				}
 
 			case "DROP":
-				//function here
+				err := player.itemDrop(args)
+
+				if err != nil {
+					fmt.Fprintln(player.Conn, err.Error())
+					slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", err.Error(), "command", command)
+				}
 
 			case "TALK":
 				//function here
@@ -130,7 +102,7 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 
 	default:
 		fmt.Fprintln(conn, InvalidCommandErr.Error())
-		slog.Info(InvalidCommandErr.Error(), "player", player.Username, "command", command, "args", args)
+		slog.Info(InvalidCommandErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
 	}
 
 }

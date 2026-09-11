@@ -6,17 +6,15 @@ import (
 )
 
 func chatDispatcher(scope, message string, player *Player) {
+	pname := player.getPlayerName()
+
 	switch scope {
 	case "GLOBAL":
 		onlinePlayersMu.Lock()
 		defer onlinePlayersMu.Unlock()
 
-		player.PlayerMu.Lock()
-		pname := player.Username
-		player.PlayerMu.Unlock()
-
 		for _, p := range onlinePlayers {
-			if p.Username == pname {
+			if p.getPlayerName() == pname {
 				continue
 			}
 			fmt.Fprintln(p.Conn, EvtGlobalChat(pname, message))
@@ -25,14 +23,8 @@ func chatDispatcher(scope, message string, player *Player) {
 		fmt.Fprintln(player.Conn, "OK")
 
 	case "ROOM":
-		player.PlayerMu.Lock()
-		playerLoc := player.CurrLoc
-		pname := player.Username
-		player.PlayerMu.Unlock()
-
-		zonesMu.Lock()
-		area, ok := zones[playerLoc]
-		zonesMu.Unlock()
+		playerLoc := player.getZoneID()
+		area, ok := getZoneObj(playerLoc)
 
 		if !ok {
 			fmt.Fprintln(player.Conn, InternalErr.Error())
@@ -44,19 +36,15 @@ func chatDispatcher(scope, message string, player *Player) {
 		defer area.ZoneMu.Unlock()
 
 		for _, p := range area.InZone {
-			if p.Username == pname {
-				continue
+			if p.getPlayerName() != pname {
+				fmt.Fprintln(p.Conn, EvtZoneChat(pname, message))
 			}
-			fmt.Fprintln(p.Conn, EvtZoneChat(pname, message))
 		}
 
 		fmt.Fprintln(player.Conn, "OK")
 
 	case "GROUP":
-		player.PlayerMu.Lock()
-		inGroup := player.GroupInfo
-		pname := player.Username
-		player.PlayerMu.Unlock()
+		inGroup := player.getPlayerGroupInfo()
 
 		if inGroup == nil {
 			fmt.Fprintln(player.Conn, NotInGroupErr.Error())
@@ -68,10 +56,9 @@ func chatDispatcher(scope, message string, player *Player) {
 		defer inGroup.GroupMu.Unlock()
 
 		for k, p := range inGroup.Members {
-			if k == pname {
-				continue
+			if k != pname {
+				fmt.Fprintln(p.Conn, EvtPartyChat(pname, message))
 			}
-			fmt.Fprintln(p.Conn, EvtPartyChat(pname, message))
 		}
 
 		fmt.Fprintln(player.Conn, "OK")
