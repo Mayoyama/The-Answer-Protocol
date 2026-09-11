@@ -1,8 +1,8 @@
 package main
 
 import (
+	"errors"
 	yml "gopkg.in/yaml.v3"
-	"strings"
 )
 
 type YmlData struct {
@@ -93,26 +93,25 @@ func ParseYmlData(data []byte) error {
 		}
 
 		for _, item := range zone.Items {
-			nm := strings.TrimPrefix(item, "item.")
+			nm, ok := resolveItem(item)
 
-			_, ok := items[nm]
 			if !ok {
-				return ItemNotFoundErr
+				return errors.New("PARSING ERROR: " + ItemNotFoundErr.Error() + " " + item + ", Zone: " + newLoc.ZoneID)
 			}
 
-			newLoc.Items[nm] = items[nm]
-			items[nm].BaseLoc = &newLoc
+			newLoc.Items[nm.ItemID] = nm
+			nm.BaseLoc = &newLoc
 
 		}
 
 		for _, npc := range zone.Spawns {
-			_, ok := npcs[npc]
+			n, ok := resolveNPC(npc)
 			if !ok {
-				return NPCNotFoundErr
+				return errors.New("PARSING ERROR: " + NPCNotFoundErr.Error() + " " + npc + ", Zone: " + newLoc.ZoneID)
 			}
 
-			newLoc.NPCs[npc] = npcs[npc]
-			npcs[npc].BaseLoc = &newLoc
+			newLoc.NPCs[n.NPCID] = n
+			n.BaseLoc = &newLoc
 		}
 
 		zones[key] = &newLoc

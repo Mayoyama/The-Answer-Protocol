@@ -19,12 +19,13 @@ type Group struct {
 }
 
 func groupFuncDispatcher(subcommand, subargs string, player *Player) {
+	pname := player.getPlayerName()
 	switch subcommand {
 	case "CREATE":
 		group, err := GroupCreate(player)
 		if err != nil {
 			fmt.Fprintln(player.Conn, err.Error())
-			slog.Info(err.Error(), "player", player.getPlayerName(), "command", subcommand, "subargs", subargs)
+			slog.Info(err.Error(), "player", pname, "command", subcommand, "subargs", subargs)
 			return
 		}
 
@@ -37,49 +38,50 @@ func groupFuncDispatcher(subcommand, subargs string, player *Player) {
 
 		if !ok {
 			fmt.Fprintln(player.Conn, PlayerNotFoundErr.Error())
-			slog.Info(PlayerNotFoundErr.Error(), "player", player.getPlayerName(), "command", subcommand, "subargs", subargs)
+			slog.Info(PlayerNotFoundErr.Error(), "player", pname, "command", subcommand, "subargs", subargs)
 			return
 		}
 
 		inParty := player.getPlayerGroupInfo()
 		if inParty == nil {
 			fmt.Fprintln(player.Conn, NotInGroupErr.Error())
-			slog.Info(NotInGroupErr.Error(), "player", player.getPlayerName(), "command", subcommand, "subargs", subargs)
+			slog.Info(NotInGroupErr.Error(), "player", pname, "command", subcommand, "subargs", subargs)
 			return
 		}
 
 		err := inParty.GroupInvite(player, invitee)
 		if err != nil {
-			slog.Info(err.Error(), "player", player.getPlayerName(), "command", subcommand, "subargs", subargs)
+			slog.Info(err.Error(), "player", pname, "command", subcommand, "subargs", subargs)
 		}
 
 	case "JOIN":
 		err := GroupJoin(subargs, player)
 		if err != nil {
-			slog.Info(err.Error(), "player", player.getPlayerName(), "command", subcommand, "subargs", subargs)
+			slog.Info(err.Error(), "player", pname, "command", subcommand, "subargs", subargs)
 		}
 
 	case "LEAVE":
 		inParty := player.getPlayerGroupInfo()
 		if inParty == nil {
 			fmt.Fprintln(player.Conn, NotInGroupErr.Error())
-			slog.Info(NotInGroupErr.Error(), "player", player.getPlayerName(), "command", subcommand, "subargs", subargs)
+			slog.Info(NotInGroupErr.Error(), "player", pname, "command", subcommand, "subargs", subargs)
 			return
 		}
 
 		err := inParty.GroupLeave(player)
 
 		if err != nil {
-			slog.Info(err.Error(), "player", player.getPlayerName(), "command", subcommand, "subargs", subargs)
+			slog.Info(err.Error(), "player", pname, "command", subcommand, "subargs", subargs)
 		}
 
 	default:
 		fmt.Fprintln(player.Conn, InvalidCommandErr.Error())
-		slog.Info(InvalidCommandErr.Error(), "player", player.getPlayerName(), "command", subcommand)
+		slog.Info(InvalidCommandErr.Error(), "player", pname, "command", subcommand)
 	}
 }
 
 func GroupCreate(player *Player) (*Group, error) {
+	pname := player.getPlayerName()
 	player.PlayerMu.Lock()
 	defer player.PlayerMu.Unlock()
 	if player.GroupInfo != nil {
@@ -87,10 +89,10 @@ func GroupCreate(player *Player) (*Group, error) {
 	}
 
 	newgroup := Group{
-		GroupID:    "PT-" + player.getPlayerName(),
-		LeaderName: player.getPlayerName(),
+		GroupID:    "PT-" + pname,
+		LeaderName: pname,
 		Members: map[string]*Player{
-			player.getPlayerName(): player,
+			pname: player,
 		},
 	}
 
@@ -104,7 +106,10 @@ func GroupCreate(player *Player) (*Group, error) {
 }
 
 func (g *Group) GroupInvite(inviter, player *Player) error {
-	if inviter.Username == player.getPlayerName() {
+	inviterName := inviter.getPlayerName()
+	pname := player.getPlayerName()
+
+	if inviterName == pname {
 		fmt.Fprintln(inviter.Conn, InvalidCommandErr.Error())
 		return InvalidCommandErr
 	}
@@ -112,7 +117,7 @@ func (g *Group) GroupInvite(inviter, player *Player) error {
 	g.GroupMu.Lock()
 	defer g.GroupMu.Unlock()
 
-	if inviter.Username != g.LeaderName {
+	if inviterName != g.LeaderName {
 		fmt.Fprintln(inviter.Conn, NotLeaderErr.Error())
 		return NotLeaderErr
 	}
@@ -125,7 +130,7 @@ func (g *Group) GroupInvite(inviter, player *Player) error {
 		return InGroupErr
 	}
 
-	fmt.Fprintln(player.Conn, EvtPartyInvite(inviter.Username))
+	fmt.Fprintln(player.Conn, EvtPartyInvite(inviterName))
 	return nil
 }
 
@@ -133,6 +138,8 @@ func GroupJoin(leaderName string, player *Player) error {
 	partiesMu.Lock()
 	g, ok := parties["PT-"+leaderName]
 	partiesMu.Unlock()
+
+	pname := player.getPlayerName()
 
 	if !ok {
 		fmt.Fprintln(player.Conn, NotLeaderErr.Error())
@@ -151,20 +158,21 @@ func GroupJoin(leaderName string, player *Player) error {
 	}
 
 	player.GroupInfo = g
-	g.Members[player.getPlayerName()] = player
+	g.Members[pname] = player
 
 	for k, m := range g.Members {
-		if k == player.getPlayerName() {
-			continue
+		if k != pname {
+			fmt.Fprintln(m.Conn, EvtPartyJoin(pname))
 		}
-		fmt.Fprintln(m.Conn, EvtPartyJoin(player.getPlayerName()))
 	}
 
 	return nil
 }
 
 func (g *Group) GroupLeave(player *Player) error {
-	if g.LeaderName == player.getPlayerName() {
+	pname := player.getPlayerName()
+
+	if g.LeaderName == pname {
 		GroupDisband(g.LeaderName, g)
 		return nil
 	}
@@ -180,11 +188,11 @@ func (g *Group) GroupLeave(player *Player) error {
 		return NotInGroupErr
 	}
 
-	delete(g.Members, player.getPlayerName())
+	delete(g.Members, pname)
 	player.GroupInfo = nil
 
 	for _, m := range g.Members {
-		fmt.Fprintln(m.Conn, EvtPartyLeave(player.getPlayerName()))
+		fmt.Fprintln(m.Conn, EvtPartyLeave(pname))
 	}
 
 	return nil
@@ -202,12 +210,12 @@ func GroupDisband(leaderName string, g *Group) {
 		m.PlayerMu.Lock()
 		m.GroupInfo = nil
 		channel := m.Conn
-		pname := m.Username
+		memName := m.Username
 		m.PlayerMu.Unlock()
 
-		if leaderName != pname {
+		if leaderName != memName {
 			fmt.Fprintln(channel, EvtPartyLeave(g.LeaderName))
-			fmt.Fprintln(channel, EvtPartyLeave(pname))
+			fmt.Fprintln(channel, EvtPartyLeave(memName))
 		}
 	}
 }

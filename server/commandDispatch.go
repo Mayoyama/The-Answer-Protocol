@@ -15,30 +15,32 @@ func handleInternalError(conn net.Conn, err error, loginState *LoginStatus, slog
 	conn.Close()
 }
 
-func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatus, player *Player) {
+func commandDispatch(command, args string, loginState *LoginStatus, player *Player) {
+	pname := player.getPlayerName()
+
 	switch command {
 	case "CONNECT":
-		fmt.Fprintln(conn, AlreadyConnErr.Error())
-		slog.Info(AlreadyConnErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
+		fmt.Fprintln(player.Conn, AlreadyConnErr.Error())
+		slog.Info(AlreadyConnErr.Error(), "player", pname, "command", command, "args", args)
 
 	case "LOOK", "QUIT", "WHO", "STATUS", "INVENTORY", "QUESTS":
 		if args != "" {
-			fmt.Fprintln(conn, InvalidArgsErr.Error())
-			slog.Info(InvalidArgsErr.Error(), "player", player.getPlayerName(), "command", command, "args", nil)
+			fmt.Fprintln(player.Conn, InvalidArgsErr.Error())
+			slog.Info(InvalidArgsErr.Error(), "player", pname, "command", command, "args", nil)
 
 		} else {
 			switch command {
 			case "QUIT":
-				fmt.Fprintln(conn, "OK bye")
-				slog.Info("PLAYER_QUIT", "player", player.getPlayerName(), "command", command)
+				fmt.Fprintln(player.Conn, "OK bye")
+				slog.Info("PLAYER_QUIT", "player", pname, "command", command)
 				*loginState = LoginClosed
-				conn.Close()
+				player.Conn.Close()
 
 			case "LOOK":
 				handleLook(player, loginState)
 
 			case "WHO":
-				handleWHO(player, loginState, command)
+				handleWho(player, loginState, command)
 
 			case "STATUS":
 				printStatus(player, command, args)
@@ -53,8 +55,8 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "QUEST":
 		if args == "" {
 			//TODO: Need to comment about custom error in readme
-			fmt.Fprintln(conn, MissingArgsErr.Error())
-			slog.Info(MissingArgsErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
+			fmt.Fprintln(player.Conn, MissingArgsErr.Error())
+			slog.Info(MissingArgsErr.Error(), "player", pname, "command", command, "args", args)
 
 		} else {
 			subparts := strings.SplitN(args, " ", 2)
@@ -65,7 +67,24 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 
 			switch command {
 			case "MOVE":
-				//function here
+				err, currLoc := handleMove(args, player)
+
+				switch {
+				case err == nil:
+					//pass
+
+				case err == InternalErr:
+					handleInternalError(player.Conn, InternalErr, loginState,
+						slog.String("player", pname),
+						slog.String("command", "MOVE"),
+						slog.String("oldLoc", currLoc),
+						slog.String("direction", args),
+					)
+
+				default:
+					fmt.Fprintln(player.Conn, err.Error())
+					slog.Info(err.Error(), "player", pname, "command", command, "oldLoc", currLoc, "direction", args)
+				}
 
 			case "CHAT":
 				chatDispatcher(subparts[0], subargs, player)
@@ -78,7 +97,7 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 
 				if err != nil {
 					fmt.Fprintln(player.Conn, err.Error())
-					slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", err.Error(), "command", command)
+					slog.Info("SYS_MESSAGE", "player", pname, "message", err.Error(), "command", command)
 				}
 
 			case "DROP":
@@ -86,11 +105,28 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 
 				if err != nil {
 					fmt.Fprintln(player.Conn, err.Error())
-					slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", err.Error(), "command", command)
+					slog.Info("SYS_MESSAGE", "player", pname, "message", err.Error(), "command", command)
 				}
 
 			case "TALK":
-				//function here
+				err, loc := handleTalk(args, player)
+
+				switch {
+				case err == nil:
+					//pass
+
+				case err == InternalErr:
+					handleInternalError(player.Conn, InternalErr, loginState,
+						slog.String("player", pname),
+						slog.String("command", command),
+						slog.String("loc", loc),
+						slog.String("npc", args),
+					)
+
+				default:
+					fmt.Fprintln(player.Conn, err.Error())
+					slog.Info(err.Error(), "player", pname, "command", command, "loc", loc, "npc", args)
+				}
 
 			case "ATTACK":
 				//function here
@@ -101,8 +137,8 @@ func commandDispatch(conn net.Conn, command, args string, loginState *LoginStatu
 		}
 
 	default:
-		fmt.Fprintln(conn, InvalidCommandErr.Error())
-		slog.Info(InvalidCommandErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
+		fmt.Fprintln(player.Conn, InvalidCommandErr.Error())
+		slog.Info(InvalidCommandErr.Error(), "player", pname, "command", command, "args", args)
 	}
 
 }

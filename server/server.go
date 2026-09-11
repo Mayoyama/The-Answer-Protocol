@@ -67,13 +67,13 @@ func processConn(conn net.Conn, args string, player **Player) (LoginStatus, erro
 	zones[startingZone].ZoneMu.Unlock()
 
 	slog.Info("PLAYER_CONNECTED", "player", (*player).Username, "args", args)
-	slog.Info(EvtZoneEnter((*player).Username), "zone", startingZone)
+	slog.Info(EvtZoneEnter((*player).Username), "loc", startingZone)
 
 	return LoginOK, nil
 }
 
 func handleLogin(conn net.Conn, command, args string, loginState *LoginStatus, player **Player) {
-	command = strings.ToUpper((command))
+	//command = strings.ToUpper((command))
 
 	switch command {
 	case "CONNECT":
@@ -142,7 +142,7 @@ func handleTCPConn(conn net.Conn) {
 		}
 
 		if loginState == LoginOK {
-			commandDispatch(conn, parts[0], args, &loginState, player)
+			commandDispatch(parts[0], args, &loginState, player)
 
 		} else if loginState == LoginClosed {
 			break
