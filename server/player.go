@@ -6,25 +6,33 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 )
 
+// onlinePlayers holds all currently connected players, keyed by username.
 var (
 	onlinePlayers   = make(map[string]*Player)
 	onlinePlayersMu sync.Mutex
 )
 
+// Player represents a connected player and their in-game state.
 type Player struct {
-	Username  string
-	MaxHP     int
-	CurrHP    int
-	CurrLoc   string
-	Status    string
-	GroupInfo *Group
-	Inventory map[string]bool
-	Conn      net.Conn
-	PlayerMu  sync.Mutex
+	Username       string
+	MaxHP          int
+	CurrHP         int
+	CurrLoc        string
+	Status         string
+	GroupInfo      *Group
+	Inventory      map[string]bool
+	Conn           net.Conn
+	TokenCount     float64
+	BucketTS       time.Time
+	TimeoutEnd     time.Time
+	TimeoutActions int
+	PlayerMu       sync.Mutex
 }
 
+// NewPlayer creates a new Player at the given starting location.
 func NewPlayer(username, startLoc string, conn net.Conn) *Player {
 	return &Player{
 		Username:  username,
@@ -36,12 +44,13 @@ func NewPlayer(username, startLoc string, conn net.Conn) *Player {
 	}
 }
 
+// CleanupPlayerData removes the player from their group, zone, and the online list on disconnect.
 func (p *Player) CleanupPlayerData() {
 	inPT := p.getPlayerGroupInfo()
 	pname := p.getPlayerName()
 
 	if inPT != nil {
-		inPT.GroupLeave(p)
+		_ = inPT.GroupLeave(p)
 	}
 
 	currLoc := p.getZoneID()
@@ -51,7 +60,8 @@ func (p *Player) CleanupPlayerData() {
 		zone.ZoneMu.Lock()
 		delete(zone.InZone, pname)
 		for _, pl := range zone.InZone {
-			fmt.Fprintln(pl.Conn, EvtZoneLeave(pname))
+			_, _ = fmt.Fprintln(pl.Conn, EvtZoneLeave(pname))
+			slog.Info("SYS_MESSAGE", "player", pl.getPlayerName(), "message", EvtZoneLeave(pname), "reason", "player cleanup")
 		}
 
 		for i, b := range p.Inventory {
@@ -83,9 +93,10 @@ func (p *Player) CleanupPlayerData() {
 
 	onlinePlayersMu.Unlock()
 
-	slog.Info("SYSTEM_INFO: Player cleanup complete", "player", pname)
+	slog.Info("PLAYER_CLEANUP_COMPLETE", "player", pname)
 }
 
+// printStatus sends the player's HP/status as a JSON response.
 func printStatus(player *Player, command, args string) {
 	player.PlayerMu.Lock()
 	playerStats := PlayerStatusResponse{
@@ -98,12 +109,12 @@ func printStatus(player *Player, command, args string) {
 	player.PlayerMu.Unlock()
 
 	if err != nil {
-		fmt.Fprintln(player.Conn, JSONErr.Error())
+		_, _ = fmt.Fprintln(player.Conn, JSONErr.Error())
 		slog.Error(JSONErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
 		return
 	}
 
-	fmt.Fprintln(player.Conn, "OK", string(statPrint))
+	_, _ = fmt.Fprintln(player.Conn, "OK", string(statPrint))
 	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK "+string(statPrint), "command", command)
 
 }

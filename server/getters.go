@@ -1,5 +1,6 @@
 package main
 
+// getZoneObj looks up a zone by its ID.
 func getZoneObj(loc string) (*Zone, bool) {
 	zonesMu.Lock()
 	zone, ok := zones[loc]
@@ -8,14 +9,15 @@ func getZoneObj(loc string) (*Zone, bool) {
 	return zone, ok
 }
 
-func (z *Zone) getZoneName() string {
-	z.ZoneMu.Lock()
-	zname := z.ZoneName
-	z.ZoneMu.Unlock()
+// func (z *Zone) getZoneName() string {
+// 	z.ZoneMu.Lock()
+// 	zname := z.ZoneName
+// 	z.ZoneMu.Unlock()
 
-	return zname
-}
+// 	return zname
+// }
 
+// getZoneID returns the player's current zone ID.
 func (p *Player) getZoneID() string {
 	p.PlayerMu.Lock()
 	loc := p.CurrLoc
@@ -24,6 +26,7 @@ func (p *Player) getZoneID() string {
 	return loc
 }
 
+// getPlayerName returns the player's username.
 func (p *Player) getPlayerName() string {
 	p.PlayerMu.Lock()
 	name := p.Username
@@ -32,6 +35,7 @@ func (p *Player) getPlayerName() string {
 	return name
 }
 
+// getPlayerGroupInfo returns the group the player belongs to, or nil.
 func (p *Player) getPlayerGroupInfo() *Group {
 	p.PlayerMu.Lock()
 	inPT := p.GroupInfo
@@ -40,6 +44,7 @@ func (p *Player) getPlayerGroupInfo() *Group {
 	return inPT
 }
 
+// getNPCObject resolves an NPC by name and confirms it's present in this zone.
 func (z *Zone) getNPCObject(name string) (*NPC, bool) {
 	n, ok := resolveNPC(name)
 	if !ok {
@@ -57,6 +62,7 @@ func (z *Zone) getNPCObject(name string) (*NPC, bool) {
 	return n, true
 }
 
+// getNPCName returns the NPC's display name.
 func (n *NPC) getNPCName() string {
 	n.NPCMu.Lock()
 	sname := n.NPCName
