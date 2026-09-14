@@ -14,6 +14,7 @@ import (
 // gracefulQuit sends QUIT to the server and waits briefly for a response before exiting.
 func gracefulQuit(conn net.Conn, servErr chan error, timeout time.Duration) {
 	_, _ = fmt.Fprintln(conn, "QUIT")
+
 	select {
 	case err := <-servErr:
 		if err != nil {
@@ -31,17 +32,19 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	conn, err := net.Dial("tcp", ":4242")
+
 	if err != nil {
 		fmt.Println("Could not connect to TCP on 4242: ", err)
+
 		return
 	}
 
-	defer func(){ _ = conn.Close() }()
+	defer func() { _ = conn.Close() }()
 
 	TAPReader := bufio.NewReader(conn)
 	stdinScanner := bufio.NewScanner(os.Stdin)
-
 	greeting, err := TAPReader.ReadString('\n')
+
 	if err != nil {
 		fmt.Println("Connected but failed to read from TCP: ", err)
 		return
@@ -50,10 +53,13 @@ func main() {
 	fmt.Println(greeting)
 
 	var username string
+
 	for username == "" {
 		fmt.Println("Input new username: ")
+
 		if !stdinScanner.Scan() {
 			fmt.Println("Error reading from stdin: ", stdinScanner.Err())
+
 			return
 		}
 
@@ -62,11 +68,14 @@ func main() {
 
 		if response, err := TAPReader.ReadString('\n'); err != nil {
 			fmt.Println("Error reading from TAP server: ", err)
+
 			return
+
 		} else {
 			if strings.HasPrefix(response, "OK") {
 				username = input
 			}
+
 			fmt.Println(response)
 		}
 	}
@@ -80,6 +89,7 @@ func main() {
 			response, err := TAPReader.ReadString('\n')
 			if err != nil {
 				serverErr <- err
+
 				return
 			}
 
@@ -87,6 +97,7 @@ func main() {
 
 			if strings.TrimSpace(response) == "OK bye" {
 				serverErr <- nil
+
 				return
 			}
 		}
@@ -115,6 +126,7 @@ func main() {
 		case err := <-stdinErr:
 			if err != nil {
 				_, _ = fmt.Printf("Error while handling stdin: %v\nClosing connection to server...\n", err)
+
 			} else {
 				_, _ = fmt.Println("Ctrl+D/EOF detected. Closing connection to server...")
 			}

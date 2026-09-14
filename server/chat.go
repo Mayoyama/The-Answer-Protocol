@@ -35,8 +35,10 @@ func chatDispatcher(scope, message string, player *Player, loginState *LoginStat
 				slog.String("loc", playerLoc),
 				slog.String("scope", scope),
 			)
+
 			return
 		}
+
 		area.ZoneMu.Lock()
 		defer area.ZoneMu.Unlock()
 
@@ -56,6 +58,7 @@ func chatDispatcher(scope, message string, player *Player, loginState *LoginStat
 		if inGroup == nil {
 			_, _ = fmt.Fprintln(player.Conn, NotInGroupErr.Error())
 			slog.Info(NotInGroupErr.Error(), "player", pname, "command", "CHAT", "scope", scope)
+
 			return
 		}
 
@@ -76,5 +79,4 @@ func chatDispatcher(scope, message string, player *Player, loginState *LoginStat
 		_, _ = fmt.Fprintln(player.Conn, InvalidArgsErr.Error())
 		slog.Info(InvalidArgsErr.Error(), "player", pname, "command", "CHAT", "scope", scope)
 	}
-
 }

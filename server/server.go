@@ -41,7 +41,17 @@ func getFileData(pathname string) ([]byte, error) {
 
 // main loads the world data, starts the TCP listener, and serves connections until shutdown.
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+	slogOption := &slog.HandlerOptions{
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey && len(groups) == 0 {
+				a.Value = slog.StringValue(a.Value.Time().Format(time.RFC3339))
+			}
+
+			return a
+		},
+	}
+
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, slogOption)))
 
 	const worldYML = "world.yaml"
 	fileData, err := getFileData(worldYML)
@@ -52,20 +62,39 @@ func main() {
 	}
 
 	err = ParseYmlData(fileData)
+
 	if err != nil {
 		slog.Error(InternalErr.Error(), "err", err)
 		os.Exit(1)
 	}
 
 	errs := ValidateWorldData()
+
 	if len(errs) >= 1 {
 		for i, e := range errs {
 			slog.Error(InternalErr.Error(), "number", i+1, "err", e)
 		}
 		os.Exit(1)
+	} else {
+		slog.Info("WORLD_DATA_VALIDATED")
 	}
 
+	//if err := validateMapConnectivity(); err != nil {
+	//	slog.Error(InternalErr.Error(), "err", err)
+	//	os.Exit(1)
+	//} else {
+	//	slog.Info("MAP_CONNECTIVITY_VALIDATED")
+	//}
+
+	//if ok := mapLoopExists(); !ok {
+	//	slog.Error(InternalErr.Error(), "err", "NO_MAP_LOOP_DETECTED")
+	//	os.Exit(1)
+	//}else {
+	//	slog.Info("MAP_LOOP_VALIDATED")
+	//}
+
 	listener, err := net.Listen("tcp", ":4242")
+
 	if err != nil {
 		slog.Error(ConnFailedErr.Error(), "err", err)
 		os.Exit(1)
@@ -82,11 +111,14 @@ func main() {
 		_ = listener.Close()
 
 		var toCleanUp []*Player
+
 		onlinePlayersMu.Lock()
 		onlineCount := len(onlinePlayers)
+
 		for _, p := range onlinePlayers {
 			toCleanUp = append(toCleanUp, p)
 		}
+
 		slog.Info("PERFORMING_CLEANUP", "players affected", onlineCount)
 		onlinePlayersMu.Unlock()
 
@@ -111,9 +143,11 @@ func main() {
 		}
 	}()
 
-	var currRetries int
 	const maxRetries = 5
-	var wg sync.WaitGroup
+	var (
+		currRetries int
+		wg          sync.WaitGroup
+	)
 
 	for {
 		conn, err := listener.Accept()
@@ -128,10 +162,12 @@ func main() {
 			if currRetries >= maxRetries {
 				slog.Error(ConnFailedErr.Error(), "err", err)
 				break
+
 			} else {
 				slog.Warn(InboundConnErr.Error(), "err", err)
 				continue
 			}
+
 		} else {
 			currRetries = 0
 		}
@@ -142,6 +178,7 @@ func main() {
 		trackConnCount(conn, host)
 
 		softBanned, untilWhen := isIPSoftbanned(host, time.Now())
+
 		if softBanned {
 			_, _ = fmt.Fprintln(conn, SoftbannedErr.Error())
 			slog.Warn(SoftbannedErr.Error(), "host", host, "remote", ipAddress, "until_when", untilWhen, "time_remaining", time.Until(untilWhen))
@@ -150,6 +187,7 @@ func main() {
 		}
 
 		wg.Add(1)
+
 		go func() {
 			defer wg.Done()
 			handleTCPConn(conn)

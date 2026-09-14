@@ -40,14 +40,17 @@ func handleWho(player *Player, loginState *LoginStatus, command string) {
 			slog.Any("loc", currLoc),
 			slog.String("command", "WHO"),
 		)
+
 		return
 	}
 
 	var roomPl []string
 	currZone.ZoneMu.Lock()
+
 	for _, p := range currZone.InZone {
 		roomPl = append(roomPl, p.getPlayerName())
 	}
+
 	currZone.ZoneMu.Unlock()
 
 	whoResp := WhoResponse{
@@ -60,6 +63,7 @@ func handleWho(player *Player, loginState *LoginStatus, command string) {
 	if err != nil {
 		_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
 		slog.Error(JSONErr.Error(), "err", err, "player", player.getPlayerName(), "command", "WHO")
+
 		return
 	}
 
@@ -78,6 +82,7 @@ func handleLook(player *Player, loginState *LoginStatus) {
 			slog.Any("loc", nil),
 			slog.String("command", "LOOK"),
 		)
+
 		return
 	}
 
@@ -89,6 +94,7 @@ func handleLook(player *Player, loginState *LoginStatus) {
 			slog.String("loc", currLoc),
 			slog.String("command", "LOOK"),
 		)
+
 		return
 	}
 
@@ -121,6 +127,7 @@ func handleLook(player *Player, loginState *LoginStatus) {
 		Items:   items,
 		NPCS:    spawns,
 	}
+
 	area.ZoneMu.Unlock()
 
 	info, err := json.Marshal(lookRes)
@@ -139,7 +146,9 @@ func handleLook(player *Player, loginState *LoginStatus) {
 func handleMove(direction string, player *Player) (string, error) {
 	pname := player.getPlayerName()
 	currLoc := player.getZoneID()
+
 	zone, ok := getZoneObj(currLoc)
+
 	if !ok {
 		return currLoc, InternalErr
 	}
@@ -147,21 +156,25 @@ func handleMove(direction string, player *Player) (string, error) {
 	zone.ZoneMu.Lock()
 	newLoc, ok := zone.Exits[direction]
 	zone.ZoneMu.Unlock()
+
 	if !ok {
 		return currLoc, NoExitErr
 	}
 
 	newZone, ok := getZoneObj(newLoc)
+
 	if !ok {
 		return currLoc, InternalErr
 	}
 
 	zone.ZoneMu.Lock()
 	delete(zone.InZone, pname)
+
 	for _, p := range zone.InZone {
 		_, _ = fmt.Fprintln(p.Conn, EvtZoneLeave(pname))
 		slog.Info(EvtZoneLeave(pname), "loc", currLoc)
 	}
+
 	zone.ZoneMu.Unlock()
 
 	player.PlayerMu.Lock()
@@ -171,12 +184,14 @@ func handleMove(direction string, player *Player) (string, error) {
 	newZone.ZoneMu.Lock()
 	newZoneID := newZone.ZoneID
 	newZone.InZone[pname] = player
+
 	for _, p := range newZone.InZone {
 		if p != player {
 			_, _ = fmt.Fprintln(p.Conn, EvtZoneEnter(pname))
 			slog.Info(EvtZoneEnter(pname), "loc", newZone.ZoneName)
 		}
 	}
+
 	newZone.ZoneMu.Unlock()
 
 	_, _ = fmt.Fprintln(player.Conn, "OK room="+newZoneID)

@@ -3,9 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
-	"strings"
-
 	"gopkg.in/yaml.v3"
+	"strings"
 )
 
 // YmlData is the top-level structure of world.yaml.
@@ -65,6 +64,7 @@ type QuestStep struct {
 // UnmarshalYAML decodes a quest step into the QuestAction matching its discriminator key (talk_to, enter_area, or battle).
 func (qs *QuestStep) UnmarshalYAML(value *yaml.Node) error {
 	var rawData map[string]any
+
 	if err := value.Decode(&rawData); err != nil {
 		return err
 	}
@@ -72,23 +72,29 @@ func (qs *QuestStep) UnmarshalYAML(value *yaml.Node) error {
 	switch {
 	case rawData["talk_to"] != nil:
 		var action TalkToAction
+
 		if err := value.Decode(&action); err != nil {
 			return err
 		}
+
 		qs.Action = &action
 
 	case rawData["enter_area"] != nil:
 		var action EnterAreaAction
+
 		if err := value.Decode(&action); err != nil {
 			return err
 		}
+
 		qs.Action = &action
 
 	case rawData["battle"] != nil:
 		var action BattleAction
+
 		if err := value.Decode(&action); err != nil {
 			return err
 		}
+
 		qs.Action = &action
 
 	default:
@@ -103,6 +109,7 @@ func ParseYmlData(data []byte) error {
 	var worldData YmlData
 
 	err := yaml.Unmarshal(data, &worldData)
+
 	if err != nil {
 		return err
 	}
@@ -112,11 +119,9 @@ func ParseYmlData(data []byte) error {
 			return errors.New("PARSING_ERROR: INVALID_ITEM_KEY [nil]")
 		}
 
-		itemName := item.Name
-
 		newitem := Item{
 			ItemID:      "item." + key,
-			ItemName:    itemName,
+			ItemName:    item.Name,
 			Description: item.Description,
 			Obtainable:  item.Obtainable,
 		}
@@ -136,15 +141,19 @@ func ParseYmlData(data []byte) error {
 		switch quest.Type {
 		case "delivery", "Delivery":
 			questType = Delivery
+
 		case "fetch", "Fetch":
 			questType = Fetch
+
 		case "Battle", "battle", "fight", "Fight":
 			questType = Battle
+
 		default:
 			return fmt.Errorf("PARSING_ERROR: INVALID_QUEST_TYPE %s, QUEST_NAME: %s", quest.Type, quest.Name)
 		}
 
 		var steplist []QuestAction
+
 		for _, step := range quest.Steps {
 			steplist = append(steplist, step.Action)
 		}

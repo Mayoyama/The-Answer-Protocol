@@ -39,6 +39,7 @@ func (p *Player) handleTimeoutBucket(timestamp time.Time) bool {
 
 	p.PlayerMu.Lock()
 	defer p.PlayerMu.Unlock()
+
 	timeElapsed := timestamp.Sub(p.BucketTS).Seconds()
 	tokensToAdd := timeElapsed * refill
 	p.TokenCount = min(p.TokenCount+tokensToAdd, maxCapacity)
@@ -66,12 +67,12 @@ func isIPSoftbanned(ip string, timestamp time.Time) (bool, time.Time) {
 
 		if stillBanned {
 			return stillBanned, untilWhen
+
 		} else {
 			select {
 			case recheckSoftbanCh <- struct{}{}:
 			default:
 			}
-
 		}
 	}
 
@@ -89,6 +90,7 @@ func (p *Player) handleSoftban(timeRemaining time.Duration) {
 	if actions < 10 {
 		_, _ = fmt.Fprintf(p.Conn, "%v. Time remaining: %v\n", InputSpamErr.Error(), timeRemaining.Round(time.Second))
 		slog.Warn("SYS_MESSAGE", "remote", p.Conn.RemoteAddr().String(), "player", p.Username, "message", InputSpamErr.Error(), "time_remaining", timeRemaining.Round(time.Second))
+
 	} else {
 		_, _ = fmt.Fprintln(p.Conn, SoftbannedErr.Error())
 		_ = p.Conn.Close()
@@ -105,11 +107,13 @@ func (p *Player) handleSoftban(timeRemaining time.Duration) {
 // cleanSoftbanList removes expired entries from softbannedPlayers.
 func cleanSoftbanList() {
 	softbannedPlayersMu.Lock()
+
 	for ip, until := range softbannedPlayers {
 		if time.Now().After(until) {
 			delete(softbannedPlayers, ip)
 		}
 	}
+
 	softbannedPlayersMu.Unlock()
 }
 
