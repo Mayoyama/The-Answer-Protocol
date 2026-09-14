@@ -4,24 +4,28 @@ import (
 	// "fmt"
 	"fmt"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"sync"
 )
 
+// NPCRole categorizes an NPC's behavior (general, quest giver, enemy).
 type NPCRole int
 
+// NPC role values.
 const (
 	General NPCRole = iota
 	QuestGiver
 	Enemy
 )
 
+// npcs holds all loaded NPCs, keyed by NPC ID.
 var (
 	npcs   = make(map[string]*NPC)
 	npcsMu sync.Mutex
 )
 
+// NPC represents a non-player character in the world.
 type NPC struct {
 	NPCID       string
 	NPCName     string
@@ -35,6 +39,7 @@ type NPC struct {
 	NPCMu       sync.Mutex
 }
 
+// resolveNPC finds an NPC by ID or name (case-insensitive).
 func resolveNPC(input string) (*NPC, bool) {
 	npcsMu.Lock()
 	defer npcsMu.Unlock()
@@ -47,6 +52,7 @@ func resolveNPC(input string) (*NPC, bool) {
 	return nil, false
 }
 
+// getDialogue returns a random dialogue line, or a default if none are set.
 func (n *NPC) getDialogue() string {
 	n.NPCMu.Lock()
 	defer n.NPCMu.Unlock()
@@ -56,29 +62,30 @@ func (n *NPC) getDialogue() string {
 		return "..." //default dialogue if no dialogue is set
 	}
 
-	option := rand.Intn(chats)
+	option := rand.IntN(chats)
 
 	return n.Dialogue[option]
 }
 
-func handleTalk(target string, player *Player) (error, string) {
+// handleTalk sends the target NPC's dialogue to the player.
+func handleTalk(target string, player *Player) (string, error) {
 	pname := player.getPlayerName()
 	currLoc := player.getZoneID()
 	currZone, ok := getZoneObj(currLoc)
 	if !ok {
-		return InternalErr, currLoc
+		return currLoc, InternalErr
 	}
 
 	spawn, ok := currZone.getNPCObject(target)
 	if !ok {
-		return NPCNotFoundErr, currLoc
+		return currLoc, NPCNotFoundErr
 	}
 
 	dialogue := spawn.getDialogue()
 	sname := spawn.getNPCName()
 
-	fmt.Fprintln(player.Conn, "OK "+dialogue)
+	_, _ = fmt.Fprintln(player.Conn, "OK "+dialogue)
 	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+dialogue, "command", "TALK", "NPC", sname, "loc", currLoc)
 
-	return nil, ""
+	return "", nil
 }

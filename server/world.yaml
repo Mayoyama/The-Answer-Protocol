@@ -54,7 +54,9 @@ npcs:
     stats:
       hp: 25
     attackable: false
-    role: "general"
+    role: quest giver
+    quests:
+    - "bread_for_kassandra"
 
   bertha:
     name: "Bertha"
@@ -76,4 +78,18 @@ npcs:
     stats:
       hp: 18
     attackable: false
-    role: quest giver
+    role: general
+
+quests:
+  bread_for_kassandra:
+    name: "A loaf for the needy"
+    description: "George seems to need help with his daily chores."
+    type: delivery
+    steps:
+      - talk_to: "george"
+        dialogue: "Hey there! Boy am I glad you're here. Be a champ and take this 'keyitem.Loaf' to Kassandra. Thanks!"
+      - talk_to: "kassandra"
+        dialogue: "What's this, a loaf of bread? I'm not hungry, but thanks. Take this, I found it while out walking this morning and have no use for it."
+    reward:
+      key_item: "rusty_dagger"
+      gold: 50 

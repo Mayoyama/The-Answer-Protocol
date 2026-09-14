@@ -1,176 +1,24 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
-	"unicode"
-	"unicode/utf8"
 )
 
-type LoginStatus int
-
-const (
-	LoginFailed LoginStatus = iota
-	LoginOK
-	LoginClosed
-)
-
-func processConn(conn net.Conn, args string, player **Player) (LoginStatus, error) {
-	username := strings.TrimSpace(args)
-
-	if strings.ContainsFunc(username, func(r rune) bool {
-		return !unicode.IsPrint(r)
-	}) {
-		return LoginFailed, InvCharInNameErr
-
-	} else if utf8.RuneCountInString(username) > 10 {
-		return LoginFailed, NameTooLongErr
-
-	} else if utf8.RuneCountInString(username) < 2 {
-		return LoginFailed, NameTooShortErr
-	}
-
-	onlinePlayersMu.Lock()
-	defer onlinePlayersMu.Unlock()
-
-	_, isOnline := onlinePlayers[username]
-
-	if isOnline {
-		return LoginFailed, NameInUseErr
-	}
-
-	var startingZone string = "taverne"
-
-	zonesMu.Lock()
-	_, ok := zones[startingZone]
-	zonesMu.Unlock()
-
-	if !ok {
-		return LoginFailed, InternalErr
-	}
-
-	*player = NewPlayer(username, startingZone, conn)
-
-	onlinePlayers[username] = *player
-
-	zones[startingZone].ZoneMu.Lock()
-	zones[startingZone].InZone[username] = *player
-	zones[startingZone].ZoneMu.Unlock()
-
-	slog.Info("PLAYER_CONNECTED", "player", (*player).Username, "args", args)
-	slog.Info(EvtZoneEnter((*player).Username), "loc", startingZone)
-
-	return LoginOK, nil
+// generateRandInt returns a random int in [min, max], inclusive.
+func generateRandInt(min, max int) int {
+	return min + rand.IntN(max-min+1)
 }
 
-func handleLogin(conn net.Conn, command, args string, loginState *LoginStatus, player **Player) {
-	//command = strings.ToUpper((command))
-
-	switch command {
-	case "CONNECT":
-		if args == "" {
-			fmt.Fprintln(conn, MissingArgsErr.Error())
-			slog.Info(MissingArgsErr.Error(), "remote", conn.RemoteAddr().String(), "command", command, "args", nil)
-			*loginState = LoginFailed
-
-			return
-		}
-
-		result, err := processConn(conn, args, player)
-
-		if err != nil {
-			fmt.Fprintln(conn, err.Error())
-			slog.Info(err.Error(), "remote", conn.RemoteAddr().String(), "command", command, "args", args)
-
-		} else {
-			fmt.Fprintln(conn, "OK connected")
-			slog.Info("SYS_MESSAGE", "player", (*player).Username, "message", "OK connected", "command", command)
-		}
-
-		*loginState = result
-
-	case "QUIT":
-		fmt.Fprintln(conn, "OK bye")
-		slog.Info("PLAYER_QUIT", "remote", conn.RemoteAddr().String(), "command", command)
-		*loginState = LoginClosed
-		conn.Close()
-
-	default:
-		fmt.Fprintln(conn, InvalidCommandErr.Error())
-		slog.Info(InvalidCommandErr.Error(), "remote", conn.RemoteAddr().String(), "command", command, "args", args)
-	}
-}
-
-func handleTCPConn(conn net.Conn) {
-	defer conn.Close()
-	fmt.Fprintln(conn, "OK hello proto=1")
-
-	if tcpConn, ok := conn.(*net.TCPConn); ok {
-		tcpConn.SetKeepAlive(true)
-		tcpConn.SetKeepAlivePeriod(time.Second * 30)
-	}
-
-	var loginState LoginStatus
-	var player *Player
-
-	scantask := bufio.NewScanner(conn)
-	idleTimeout := time.Minute * 5
-
-	for {
-		conn.SetReadDeadline(time.Now().Add(idleTimeout))
-
-		if !scantask.Scan() {
-			break
-		}
-
-		line := scantask.Text()
-		parts := strings.SplitN(line, " ", 2)
-
-		var args string
-
-		if len(parts) > 1 {
-			args = parts[1]
-		}
-
-		if loginState == LoginOK {
-			commandDispatch(parts[0], args, &loginState, player)
-
-		} else if loginState == LoginClosed {
-			break
-
-		} else {
-			handleLogin(conn, parts[0], args, &loginState, &player)
-		}
-	}
-
-	if err := scantask.Err(); err != nil {
-		var netErr net.Error
-		switch {
-		case errors.Is(err, net.ErrClosed):
-			slog.Info("CONNECTION_CLOSED_SAFELY", "remote", conn.RemoteAddr().String())
-		case errors.As(err, &netErr) && netErr.Timeout():
-			slog.Warn("CONNECTION_IDLE_TIMEOUT_ERROR", "err", err, "remote", conn.RemoteAddr().String())
-		default:
-			slog.Warn("CONNECTION_READ_ERROR", "err", err, "remote", conn.RemoteAddr().String())
-		}
-	} else {
-		slog.Info("CONNECTION_CLOSED_BY_CLIENT", "remote", conn.RemoteAddr().String())
-	}
-
-	if player != nil {
-		player.CleanupPlayerData()
-	}
-}
-
+// getFileData reads a file's full contents, rejecting directories.
 func getFileData(pathname string) ([]byte, error) {
 	fileInfo, err := os.Stat(pathname)
 
@@ -191,8 +39,11 @@ func getFileData(pathname string) ([]byte, error) {
 	return fileData, nil
 }
 
+// main loads the world data, starts the TCP listener, and serves connections until shutdown.
 func main() {
-	worldYML := "world.yaml"
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+
+	const worldYML = "world.yaml"
 	fileData, err := getFileData(worldYML)
 
 	if err != nil {
@@ -206,9 +57,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = ValidateWorldData()
-	if err != nil {
-		slog.Error(InternalErr.Error(), "err", err)
+	errs := ValidateWorldData()
+	if len(errs) >= 1 {
+		for i, e := range errs {
+			slog.Error(InternalErr.Error(), "number", i+1, "err", e)
+		}
 		os.Exit(1)
 	}
 
@@ -217,7 +70,8 @@ func main() {
 		slog.Error(ConnFailedErr.Error(), "err", err)
 		os.Exit(1)
 	}
-	defer listener.Close()
+
+	defer func() { _ = listener.Close() }()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -225,7 +79,7 @@ func main() {
 	go func() {
 		sig := <-sigCh
 		slog.Warn("SHUTDOWN_SIGNAL_RECEIVED", "signal", sig.String())
-		listener.Close()
+		_ = listener.Close()
 
 		var toCleanUp []*Player
 		onlinePlayersMu.Lock()
@@ -237,14 +91,28 @@ func main() {
 		onlinePlayersMu.Unlock()
 
 		for _, p := range toCleanUp {
-			fmt.Fprintln(p.Conn, ConnFailedErr.Error())
+			_, _ = fmt.Fprintln(p.Conn, ConnFailedErr.Error())
 			slog.Info("SYS_MESSAGE", "player", p.getPlayerName(), "message", ConnFailedErr.Error())
-			p.Conn.Close()
+			_ = p.Conn.Close()
+		}
+	}()
+
+	ticker := time.NewTicker(time.Minute)
+
+	go func() {
+		for {
+			select {
+			case <-recheckSoftbanCh:
+				cleanSoftbanList()
+
+			case <-ticker.C:
+				cleanSoftbanList()
+			}
 		}
 	}()
 
 	var currRetries int
-	maxRetries := 5
+	const maxRetries = 5
 	var wg sync.WaitGroup
 
 	for {
@@ -266,6 +134,19 @@ func main() {
 			}
 		} else {
 			currRetries = 0
+		}
+
+		ipAddress := conn.RemoteAddr().String()
+		host, _, _ := net.SplitHostPort(ipAddress)
+
+		trackConnCount(conn, host)
+
+		softBanned, untilWhen := isIPSoftbanned(host, time.Now())
+		if softBanned {
+			_, _ = fmt.Fprintln(conn, SoftbannedErr.Error())
+			slog.Warn(SoftbannedErr.Error(), "host", host, "remote", ipAddress, "until_when", untilWhen, "time_remaining", time.Until(untilWhen))
+			_ = conn.Close()
+			continue
 		}
 
 		wg.Add(1)

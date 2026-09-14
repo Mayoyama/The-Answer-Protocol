@@ -7,11 +7,13 @@ import (
 	"sync"
 )
 
+// zones holds all loaded zones, keyed by zone ID.
 var (
 	zones   = make(map[string]*Zone)
 	zonesMu sync.Mutex
 )
 
+// Zone represents a location in the world.
 type Zone struct {
 	ZoneID      string
 	ZoneName    string
@@ -23,6 +25,7 @@ type Zone struct {
 	ZoneMu      sync.Mutex
 }
 
+// handleWho sends the player a JSON count of players in their room and on the server.
 func handleWho(player *Player, loginState *LoginStatus, command string) {
 	onlinePlayersMu.Lock()
 	onlineCount := len(onlinePlayers)
@@ -55,15 +58,16 @@ func handleWho(player *Player, loginState *LoginStatus, command string) {
 	info, err := json.Marshal(whoResp)
 
 	if err != nil {
-		fmt.Fprintln(player.Conn, InternalErr.Error())
+		_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
 		slog.Error(JSONErr.Error(), "err", err, "player", player.getPlayerName(), "command", "WHO")
 		return
 	}
 
-	fmt.Fprintf(player.Conn, "OK %s\n", string(info))
-	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK"+string(info), "command", command)
+	_, _ = fmt.Fprintf(player.Conn, "OK %s\n", string(info))
+	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK "+string(info), "command", command)
 }
 
+// handleLook sends the player a JSON description of their current room.
 func handleLook(player *Player, loginState *LoginStatus) {
 	pname := player.getPlayerName()
 	currLoc := player.getZoneID()
@@ -122,39 +126,40 @@ func handleLook(player *Player, loginState *LoginStatus) {
 	info, err := json.Marshal(lookRes)
 
 	if err != nil {
-		fmt.Fprintln(player.Conn, InternalErr.Error())
+		_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
 		slog.Error(JSONErr.Error(), "err", err, "player", pname, "command", "LOOK")
 		return
 	}
 
-	fmt.Fprintf(player.Conn, "OK %s\n", string(info))
+	_, _ = fmt.Fprintf(player.Conn, "OK %s\n", string(info))
 	slog.Info("SYS_MESSAGE", "player", pname, "message", string(info), "command", "LOOK")
 }
 
-func handleMove(direction string, player *Player) (error, string) {
+// handleMove moves the player through an exit to an adjacent zone.
+func handleMove(direction string, player *Player) (string, error) {
 	pname := player.getPlayerName()
 	currLoc := player.getZoneID()
 	zone, ok := getZoneObj(currLoc)
 	if !ok {
-		return InternalErr, currLoc
+		return currLoc, InternalErr
 	}
 
 	zone.ZoneMu.Lock()
 	newLoc, ok := zone.Exits[direction]
 	zone.ZoneMu.Unlock()
 	if !ok {
-		return NoExitErr, currLoc
+		return currLoc, NoExitErr
 	}
 
 	newZone, ok := getZoneObj(newLoc)
 	if !ok {
-		return InternalErr, currLoc
+		return currLoc, InternalErr
 	}
 
 	zone.ZoneMu.Lock()
 	delete(zone.InZone, pname)
 	for _, p := range zone.InZone {
-		fmt.Fprintln(p.Conn, EvtZoneLeave(pname))
+		_, _ = fmt.Fprintln(p.Conn, EvtZoneLeave(pname))
 		slog.Info(EvtZoneLeave(pname), "loc", currLoc)
 	}
 	zone.ZoneMu.Unlock()
@@ -168,14 +173,14 @@ func handleMove(direction string, player *Player) (error, string) {
 	newZone.InZone[pname] = player
 	for _, p := range newZone.InZone {
 		if p != player {
-			fmt.Fprintln(p.Conn, EvtZoneEnter(pname))
+			_, _ = fmt.Fprintln(p.Conn, EvtZoneEnter(pname))
 			slog.Info(EvtZoneEnter(pname), "loc", newZone.ZoneName)
 		}
 	}
 	newZone.ZoneMu.Unlock()
 
-	fmt.Fprintln(player.Conn, "OK room="+newZoneID)
+	_, _ = fmt.Fprintln(player.Conn, "OK room="+newZoneID)
 	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK room="+newZoneID, "command", "MOVE", "prev_loc", currLoc)
 
-	return nil, ""
+	return "", nil
 }

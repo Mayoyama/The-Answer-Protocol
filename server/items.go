@@ -8,11 +8,13 @@ import (
 	"sync"
 )
 
+// items holds all loaded items, keyed by item ID.
 var (
 	items   = make(map[string]*Item)
 	itemsMu sync.Mutex
 )
 
+// Item represents a pickable object in the world.
 type Item struct {
 	ItemID      string
 	ItemName    string
@@ -21,6 +23,7 @@ type Item struct {
 	BaseLoc     *Zone
 }
 
+// resolveItem finds an item by ID or name (case-insensitive).
 func resolveItem(input string) (*Item, bool) {
 	itemsMu.Lock()
 	defer itemsMu.Unlock()
@@ -33,35 +36,38 @@ func resolveItem(input string) (*Item, bool) {
 	return nil, false
 }
 
+// AddItem adds an item to the player's inventory.
 func (p *Player) AddItem(itemID string) {
 	p.PlayerMu.Lock()
 	defer p.PlayerMu.Unlock()
 	p.Inventory[itemID] = true
 }
 
+// DropItem removes an item from the player's inventory.
 func (p *Player) DropItem(itemID string) {
 	p.PlayerMu.Lock()
 	defer p.PlayerMu.Unlock()
 	delete(p.Inventory, itemID)
 }
 
-func (p *Player) itemTake(itemName string) error {
+// itemTake moves an item from the player's current zone into their inventory.
+func (p *Player) itemTake(itemName string) (string, error) {
 	i, ok := resolveItem(itemName)
 	if !ok {
-		return ItemNotFoundErr
+		return "", ItemNotFoundErr
 	}
 
 	currLoc := p.getZoneID()
 	currZone, ok := getZoneObj(currLoc)
 
 	if !ok {
-		return InternalErr
+		return currLoc, InternalErr
 	}
 
 	currZone.ZoneMu.Lock()
 	if _, ok := currZone.Items[i.ItemID]; !ok {
 		currZone.ZoneMu.Unlock()
-		return ItemNotFoundErr
+		return currLoc, ItemNotFoundErr
 	} else {
 		delete(currZone.Items, i.ItemID)
 	}
@@ -69,23 +75,24 @@ func (p *Player) itemTake(itemName string) error {
 
 	p.AddItem(i.ItemID)
 
-	fmt.Fprintln(p.Conn, "OK taken="+i.ItemID)
+	_, _ = fmt.Fprintln(p.Conn, "OK taken="+i.ItemID)
 	slog.Info("SYS_MESSAGE", "player", p.getPlayerName(), "message", "OK taken="+i.ItemID, "command", "TAKE")
 
-	return nil
+	return "", nil
 }
 
-func (p *Player) itemDrop(itemName string) error {
+// itemDrop moves an item from the player's inventory into their current zone.
+func (p *Player) itemDrop(itemName string) (string, error) {
 	i, ok := resolveItem(itemName)
 	if !ok {
-		return ItemNotFoundErr
+		return "", ItemNotFoundErr
 	}
 
 	currLoc := p.getZoneID()
 	currZone, ok := getZoneObj(currLoc)
 
 	if !ok {
-		return InternalErr
+		return currLoc, InternalErr
 	}
 
 	p.PlayerMu.Lock()
@@ -93,7 +100,7 @@ func (p *Player) itemDrop(itemName string) error {
 	p.PlayerMu.Unlock()
 
 	if !inBag {
-		return NotInInvErr
+		return "", NotInInvErr
 	} else {
 		p.DropItem(i.ItemID)
 	}
@@ -102,12 +109,13 @@ func (p *Player) itemDrop(itemName string) error {
 	currZone.Items[i.ItemID] = i
 	currZone.ZoneMu.Unlock()
 
-	fmt.Fprintln(p.Conn, "OK dropped="+i.ItemID)
+	_, _ = fmt.Fprintln(p.Conn, "OK dropped="+i.ItemID)
 	slog.Info("SYS_MESSAGE", "player", p.getPlayerName(), "message", "OK dropped="+i.ItemID, "command", "DROP")
 
-	return nil
+	return "", nil
 }
 
+// printInventory sends the player's inventory as a JSON response.
 func printInventory(player *Player, command, args string) {
 	player.PlayerMu.Lock()
 	bag := make([]string, 0, len(player.Inventory))
@@ -120,11 +128,11 @@ func printInventory(player *Player, command, args string) {
 	player.PlayerMu.Unlock()
 
 	if err != nil {
-		fmt.Fprintln(player.Conn, JSONErr.Error())
+		_, _ = fmt.Fprintln(player.Conn, JSONErr.Error())
 		slog.Error(JSONErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
 		return
 	}
 
-	fmt.Fprintln(player.Conn, "OK", string(sac))
+	_, _ = fmt.Fprintln(player.Conn, "OK", string(sac))
 	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK "+string(sac), "command", command)
 }
