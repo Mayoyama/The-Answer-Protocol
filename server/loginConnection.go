@@ -47,8 +47,6 @@ func processConn(conn net.Conn, args string, player **Player) (LoginStatus, erro
 		return LoginFailed, NameInUseErr
 	}
 
-	const startingZone = "taverne"
-
 	zonesMu.Lock()
 	_, ok := zones[startingZone]
 	zonesMu.Unlock()
@@ -57,7 +55,7 @@ func processConn(conn net.Conn, args string, player **Player) (LoginStatus, erro
 		return LoginFailed, InternalErr
 	}
 
-	*player = NewPlayer(username, startingZone, conn)
+	*player = newPlayer(username, startingZone, conn)
 
 	onlinePlayers[username] = *player
 
@@ -88,6 +86,7 @@ func handleLogin(conn net.Conn, command, args string, loginState *LoginStatus, p
 		_ = conn.Close()
 		*loginState = LoginClosed
 		slog.Warn("SYS_MESSAGE", "remote", conn.RemoteAddr().String(), "message", InputSpamErr.Error(), "command", "CONNECT")
+
 		return
 	}
 
@@ -139,6 +138,7 @@ func handleLogin(conn net.Conn, command, args string, loginState *LoginStatus, p
 // handleTCPConn drives a single client connection from greeting through cleanup.
 func handleTCPConn(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
+
 	_, _ = fmt.Fprintln(conn, "OK hello proto=1")
 	slog.Info("SYS_MESSAGE", "remote", conn.RemoteAddr().String(), "message", "OK hello proto=1")
 
@@ -196,16 +196,19 @@ func handleTCPConn(conn net.Conn) {
 		switch {
 		case errors.Is(err, net.ErrClosed):
 			slog.Info("CONNECTION_CLOSED_SAFELY", "remote", conn.RemoteAddr().String())
+
 		case errors.As(err, &netErr) && netErr.Timeout():
 			slog.Warn("CONNECTION_IDLE_TIMEOUT_ERROR", "err", err, "remote", conn.RemoteAddr().String())
+
 		default:
 			slog.Warn("CONNECTION_READ_ERROR", "err", err, "remote", conn.RemoteAddr().String())
 		}
+
 	} else {
 		slog.Info("CONNECTION_CLOSED_BY_CLIENT", "remote", conn.RemoteAddr().String())
 	}
 
 	if player != nil {
-		player.CleanupPlayerData()
+		player.cleanupPlayerData()
 	}
 }

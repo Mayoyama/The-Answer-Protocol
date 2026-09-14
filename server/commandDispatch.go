@@ -13,7 +13,9 @@ import (
 func handleInternalError(conn net.Conn, err error, loginState *LoginStatus, slogKWARGS ...slog.Attr) {
 	_, _ = fmt.Fprintln(conn, InternalErr.Error())
 	slog.Default().LogAttrs(context.Background(), slog.LevelError, err.Error(), slogKWARGS...)
+
 	*loginState = LoginClosed
+
 	_ = conn.Close()
 }
 
@@ -24,12 +26,16 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 	softBanned, timeRemaining := player.isOnTimeout(time.Now())
 	if softBanned {
 		player.handleSoftban(timeRemaining.Round(time.Second))
+
 		return
 	}
+
 	hasTokens := player.handleTimeoutBucket(time.Now())
+
 	if !hasTokens {
 		_, _ = fmt.Fprintln(player.Conn, InputSpamErr.Error())
 		slog.Warn("SYS_MESSAGE", "remote", player.Conn.RemoteAddr().String(), "player", pname, "message", InputSpamErr.Error())
+
 		return
 	}
 
@@ -48,7 +54,9 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 			case "QUIT":
 				_, _ = fmt.Fprintln(player.Conn, "OK bye")
 				slog.Info("PLAYER_QUIT", "player", pname, "command", command)
+
 				*loginState = LoginClosed
+
 				_ = player.Conn.Close()
 
 			case "LOOK":
@@ -64,18 +72,22 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				printInventory(player, command, args)
 
 			case "QUESTS":
-				//function here
+				//var questList string
+				//_, err := json.Marshal(player.)
+
+				//fmt.Fprintln(player.Conn, qu)
 			}
 		}
 	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "QUEST":
 		if args == "" {
-			//TODO: Need to comment about custom error in readme
 			_, _ = fmt.Fprintln(player.Conn, MissingArgsErr.Error())
 			slog.Info(MissingArgsErr.Error(), "player", pname, "command", command, "args", args)
 
 		} else {
 			subparts := strings.SplitN(args, " ", 2)
+
 			var subargs string
+
 			if len(subparts) > 1 {
 				subargs = subparts[1]
 			}
@@ -171,5 +183,4 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 		_, _ = fmt.Fprintln(player.Conn, InvalidCommandErr.Error())
 		slog.Info(InvalidCommandErr.Error(), "player", pname, "command", command, "args", args)
 	}
-
 }

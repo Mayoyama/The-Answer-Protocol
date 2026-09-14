@@ -33,26 +33,30 @@ func resolveItem(input string) (*Item, bool) {
 			return item, true
 		}
 	}
+
 	return nil, false
 }
 
-// AddItem adds an item to the player's inventory.
-func (p *Player) AddItem(itemID string) {
+// addItem adds an item to the player's inventory.
+func (p *Player) addItem(itemID string) {
 	p.PlayerMu.Lock()
 	defer p.PlayerMu.Unlock()
+
 	p.Inventory[itemID] = true
 }
 
-// DropItem removes an item from the player's inventory.
-func (p *Player) DropItem(itemID string) {
+// dropItem removes an item from the player's inventory.
+func (p *Player) dropItem(itemID string) {
 	p.PlayerMu.Lock()
 	defer p.PlayerMu.Unlock()
+
 	delete(p.Inventory, itemID)
 }
 
 // itemTake moves an item from the player's current zone into their inventory.
 func (p *Player) itemTake(itemName string) (string, error) {
 	i, ok := resolveItem(itemName)
+
 	if !ok {
 		return "", ItemNotFoundErr
 	}
@@ -65,15 +69,18 @@ func (p *Player) itemTake(itemName string) (string, error) {
 	}
 
 	currZone.ZoneMu.Lock()
+
 	if _, ok := currZone.Items[i.ItemID]; !ok {
 		currZone.ZoneMu.Unlock()
 		return currLoc, ItemNotFoundErr
+
 	} else {
 		delete(currZone.Items, i.ItemID)
 	}
+
 	currZone.ZoneMu.Unlock()
 
-	p.AddItem(i.ItemID)
+	p.addItem(i.ItemID)
 
 	_, _ = fmt.Fprintln(p.Conn, "OK taken="+i.ItemID)
 	slog.Info("SYS_MESSAGE", "player", p.getPlayerName(), "message", "OK taken="+i.ItemID, "command", "TAKE")
@@ -84,6 +91,7 @@ func (p *Player) itemTake(itemName string) (string, error) {
 // itemDrop moves an item from the player's inventory into their current zone.
 func (p *Player) itemDrop(itemName string) (string, error) {
 	i, ok := resolveItem(itemName)
+
 	if !ok {
 		return "", ItemNotFoundErr
 	}
@@ -101,8 +109,9 @@ func (p *Player) itemDrop(itemName string) (string, error) {
 
 	if !inBag {
 		return "", NotInInvErr
+
 	} else {
-		p.DropItem(i.ItemID)
+		p.dropItem(i.ItemID)
 	}
 
 	currZone.ZoneMu.Lock()
@@ -118,6 +127,7 @@ func (p *Player) itemDrop(itemName string) (string, error) {
 // printInventory sends the player's inventory as a JSON response.
 func printInventory(player *Player, command, args string) {
 	player.PlayerMu.Lock()
+
 	bag := make([]string, 0, len(player.Inventory))
 
 	for item := range player.Inventory {
@@ -125,11 +135,13 @@ func printInventory(player *Player, command, args string) {
 	}
 
 	sac, err := json.Marshal(bag)
+
 	player.PlayerMu.Unlock()
 
 	if err != nil {
 		_, _ = fmt.Fprintln(player.Conn, JSONErr.Error())
 		slog.Error(JSONErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
+
 		return
 	}
 
