@@ -48,16 +48,19 @@ func mapLooper(currentZone string, onPath, fullyExplored *[]string) bool {
 			return true
 		}
 
-		if !slices.Contains((*fullyExplored), z) {
-			*onPath = append(*onPath, z)
+		if slices.Contains(*fullyExplored, z) {
+			continue
 		}
+
+		*onPath = append(*onPath, z)
 
 		if mapLooper(z, onPath, fullyExplored) {
 			return true
-		} else {
-			*fullyExplored = append(*fullyExplored, z)
-			*onPath = slices.DeleteFunc(*onPath, func(s string) bool { return s == z })
 		}
+
+		*fullyExplored = append(*fullyExplored, z)
+		*onPath = slices.DeleteFunc(*onPath, func(s string) bool { return s == z })
+
 	}
 
 	return false
@@ -75,7 +78,7 @@ func mapLoopExists() bool {
 	return mapLooper(startingZone, &onPath, &fullyExplored)
 }
 
-// ValidateWorldData checks the loaded world data for consistency. Not yet implemented.
+// ValidateWorldData checks zones, items, and NPCs (including their quests) for consistency, returning a list of errors.
 func ValidateWorldData() []error {
 	var (
 		errs          []error

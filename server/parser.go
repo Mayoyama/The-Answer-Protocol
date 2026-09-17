@@ -54,6 +54,7 @@ type ParseQuest struct {
 	Type        string       `yaml:"type"`
 	Steps       []*QuestStep `yaml:"steps"`
 	Reward      *Reward      `yaml:"reward"`
+	Requires    string       `yaml:"requires"`
 }
 
 // QuestStep wraps a single quest step, decoded into its concrete QuestAction via UnmarshalYAML.
@@ -104,7 +105,7 @@ func (qs *QuestStep) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// ParseYmlData loads world.yaml into the items, npcs, and zones maps.
+// ParseYmlData loads world.yaml into the items, npcs, and zones maps, and builds Quest objects that get attached to the NPCs that offer them.
 func ParseYmlData(data []byte) error {
 	var worldData YmlData
 
@@ -136,7 +137,32 @@ func ParseYmlData(data []byte) error {
 			return errors.New("PARSING_ERROR: INVALID_QUEST_KEY [nil]")
 		}
 
-		var questType QuestType
+		var (
+			questType QuestType
+			steplist  []QuestAction
+			steps     int
+			current   = quest.Requires
+		)
+
+		for current != "" {
+			steps++
+
+			if current == key {
+				return fmt.Errorf("PARSING_ERROR: CIRCULAR_QUEST_REQUIREMENT %s, QUEST_NAME: %s", quest.Requires, quest.Name)
+			}
+
+			if steps > len(worldData.Quests) {
+				break
+			}
+
+			next, ok := worldData.Quests[current]
+
+			if !ok {
+				return fmt.Errorf("PARSING_ERROR: INVALID_QUEST_REQUIREMENT %s, QUEST_NAME: %s", current, quest.Name)
+			}
+
+			current = next.Requires
+		}
 
 		switch quest.Type {
 		case "delivery", "Delivery":
@@ -152,8 +178,6 @@ func ParseYmlData(data []byte) error {
 			return fmt.Errorf("PARSING_ERROR: INVALID_QUEST_TYPE %s, QUEST_NAME: %s", quest.Type, quest.Name)
 		}
 
-		var steplist []QuestAction
-
 		for _, step := range quest.Steps {
 			steplist = append(steplist, step.Action)
 		}
@@ -165,6 +189,7 @@ func ParseYmlData(data []byte) error {
 			Type:        questType,
 			Steps:       steplist,
 			Reward:      quest.Reward,
+			Requires:    quest.Requires,
 		}
 
 		questObjList[key] = &newQuest

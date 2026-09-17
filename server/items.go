@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-// items holds all loaded items, keyed by item ID.
+// items holds all loaded items, keyed by their world.yaml key.
 var (
 	items   = make(map[string]*Item)
 	itemsMu sync.Mutex
@@ -139,7 +139,7 @@ func printInventory(player *Player, command, args string) {
 	player.PlayerMu.Unlock()
 
 	if err != nil {
-		_, _ = fmt.Fprintln(player.Conn, JSONErr.Error())
+		_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
 		slog.Error(JSONErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
 
 		return

@@ -85,6 +85,7 @@ quests:
     name: "A loaf for the needy"
     description: "George seems to need help with his daily chores."
     type: delivery
+    requires: ""
     steps:
       - talk_to: "george"
         dialogue: "Hey there! Boy am I glad you're here. Be a champ and take this 'keyitem.Loaf' to Kassandra. Thanks!"

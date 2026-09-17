@@ -23,7 +23,10 @@ type Player struct {
 	CurrLoc        string
 	Status         string
 	GroupInfo      *Group
+	Quests         map[string]*PlayerQuest
 	Inventory      map[string]bool
+	KeyInventory   []string
+	Gold           int
 	Conn           net.Conn
 	TokenCount     float64
 	BucketTS       time.Time
@@ -40,6 +43,7 @@ func newPlayer(username, startLoc string, conn net.Conn) *Player {
 		CurrHP:    100,
 		CurrLoc:   startLoc,
 		Inventory: make(map[string]bool),
+		Quests:    make(map[string]*PlayerQuest),
 		Conn:      conn,
 	}
 }
@@ -57,6 +61,8 @@ func (p *Player) cleanupPlayerData() {
 	zone, zOK := getZoneObj(currLoc)
 
 	if zOK {
+		var crossZoneItems []*Item
+
 		zone.ZoneMu.Lock()
 		delete(zone.InZone, pname)
 
@@ -77,14 +83,18 @@ func (p *Player) cleanupPlayerData() {
 					zone.Items[i] = item
 
 				} else {
-					item.BaseLoc.ZoneMu.Lock()
-					item.BaseLoc.Items[i] = item
-					item.BaseLoc.ZoneMu.Unlock()
+					crossZoneItems = append(crossZoneItems, item)
 				}
 			}
 		}
 
 		zone.ZoneMu.Unlock()
+
+		for _, item := range crossZoneItems {
+			item.BaseLoc.ZoneMu.Lock()
+			item.BaseLoc.Items[item.ItemID] = item
+			item.BaseLoc.ZoneMu.Unlock()
+		}
 	}
 
 	onlinePlayersMu.Lock()
@@ -113,7 +123,7 @@ func printStatus(player *Player, command, args string) {
 	player.PlayerMu.Unlock()
 
 	if err != nil {
-		_, _ = fmt.Fprintln(player.Conn, JSONErr.Error())
+		_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
 		slog.Error(JSONErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
 
 		return
@@ -121,4 +131,16 @@ func printStatus(player *Player, command, args string) {
 
 	_, _ = fmt.Fprintln(player.Conn, "OK", string(statPrint))
 	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK "+string(statPrint), "command", command)
+}
+
+func printGoldBalance(player *Player) {
+	pname := player.getPlayerName()
+
+	player.PlayerMu.Lock()
+	msg := fmt.Sprintf("OK %d GOLD", player.Gold)
+	player.PlayerMu.Unlock()
+
+	_, _ = fmt.Fprintln(player.Conn, msg)
+	slog.Info("SYS_MESSAGE", "player", pname, "message", msg, "command", "GOLD")
+
 }
