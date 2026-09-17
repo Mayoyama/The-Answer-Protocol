@@ -33,10 +33,10 @@ type AttackResponse struct {
 
 // QuestResponse is the JSON payload for a single quest.
 type QuestResponse struct {
-	QuestID     string `json:"quest_id"`
-	Description string `json:"description"`
-	Reward      string `json:"reward"`
-	Status      string `json:"status"`
+	QuestID     string  `json:"quest_id"`
+	Description string  `json:"description"`
+	Reward      *Reward `json:"reward"` // nil when the quest has no reward
+	Status      string  `json:"status"`
 }
 
 // QuestSummary is the condensed quest info listed in QuestsResponse.

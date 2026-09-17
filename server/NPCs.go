@@ -1,15 +1,13 @@
 package main
 
 import (
-	// "fmt"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"strings"
 	"sync"
 )
 
-// npcs holds all loaded NPCs, keyed by NPC ID.
+// npcs holds all loaded NPCs, keyed by their world.yaml key.
 var (
 	npcs   = make(map[string]*NPC)
 	npcsMu sync.Mutex
@@ -31,6 +29,7 @@ type NPC struct {
 	NPCName     string
 	Description string
 	Dialogue    []string
+	ChatIndex int
 	Quests      map[string]*Quest
 	Role        NPCRole
 	Attackable  bool
@@ -54,19 +53,50 @@ func resolveNPC(input string) (*NPC, bool) {
 }
 
 // getDialogue returns a random dialogue line, or a default if none are set.
-func (n *NPC) getDialogue() string {
+func (n *NPC) getDialogue(player *Player) (*PlayerQuest, string, bool) {
+	player.PlayerMu.Lock()
+
+	for _, pq := range player.Quests {
+		if pq.Status != Active {
+			continue
+		}
+		step, ok := pq.Quest.Steps[pq.StepIndex].(*TalkToAction)
+
+		if !ok {
+			continue
+		}
+
+		npc, found := resolveNPC(step.Target)
+
+		if found && npc == n {
+			pq.StepIndex++
+			complete := pq.StepIndex >= len(pq.Quest.Steps)
+
+			player.PlayerMu.Unlock()
+
+			return pq, step.Dialogue, complete
+
+		} else {
+			continue
+		}
+	}
+
+	player.PlayerMu.Unlock()
+
 	n.NPCMu.Lock()
 	defer n.NPCMu.Unlock()
 
 	chats := len(n.Dialogue)
 
 	if chats == 0 {
-		return "..." //default dialogue if no dialogue is set
+		return nil, "...", false //default dialogue if no dialogue is set
 	}
 
-	option := rand.IntN(chats)
+	option := n.ChatIndex % chats
 
-	return n.Dialogue[option]
+	n.ChatIndex++
+
+	return nil, n.Dialogue[option], false
 }
 
 // handleTalk sends the target NPC's dialogue to the player.
@@ -86,11 +116,15 @@ func handleTalk(target string, player *Player) (string, error) {
 		return currLoc, NPCNotFoundErr
 	}
 
-	dialogue := spawn.getDialogue()
+	pq, dialogue, completedQuest := spawn.getDialogue(player)
 	sname := spawn.getNPCName()
 
-	_, _ = fmt.Fprintln(player.Conn, "OK "+dialogue)
+			_, _ = fmt.Fprintln(player.Conn, "OK "+dialogue)
 	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+dialogue, "command", "TALK", "NPC", sname, "loc", currLoc)
+
+		if completedQuest {
+		pq.completeQuest(player)
+	}
 
 	return "", nil
 }

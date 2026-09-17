@@ -44,7 +44,7 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 		_, _ = fmt.Fprintln(player.Conn, AlreadyConnErr.Error())
 		slog.Info(AlreadyConnErr.Error(), "player", pname, "command", command, "args", args)
 
-	case "LOOK", "QUIT", "WHO", "STATUS", "INVENTORY", "QUESTS":
+	case "LOOK", "QUIT", "WHO", "STATUS", "INVENTORY", "QUESTS", "GOLD":
 		if args != "" {
 			_, _ = fmt.Fprintln(player.Conn, InvalidArgsErr.Error())
 			slog.Info(InvalidArgsErr.Error(), "player", pname, "command", command, "args", nil)
@@ -72,13 +72,14 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				printInventory(player, command, args)
 
 			case "QUESTS":
-				//var questList string
-				//_, err := json.Marshal(player.)
+				printPlayerQuests(player)
 
-				//fmt.Fprintln(player.Conn, qu)
+			case "GOLD":
+				printGoldBalance(player)
 			}
 		}
-	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "QUEST":
+
+	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "QUEST", "ACCEPT":
 		if args == "" {
 			_, _ = fmt.Fprintln(player.Conn, MissingArgsErr.Error())
 			slog.Info(MissingArgsErr.Error(), "player", pname, "command", command, "args", args)
@@ -175,7 +176,32 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				//function here
 
 			case "QUEST":
-				//function here
+				err := checkNPCQuest(player, args)
+
+				switch err {
+				case nil:
+				case JSONErr:
+					_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
+					slog.Error(JSONErr.Error(), "player", pname, "command", command, "args", args)
+
+				default:
+					_, _ = fmt.Fprintln(player.Conn, err.Error())
+					slog.Info(err.Error(), "player", pname, "command", command, "npc", args)
+				}
+
+			case "ACCEPT":
+				err := acceptQuest(player, args)
+
+				switch err {
+				case nil:
+				case JSONErr:
+					_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
+					slog.Error(JSONErr.Error(), "player", pname, "command", command, "args", args)
+
+				default:
+					_, _ = fmt.Fprintln(player.Conn, err.Error())
+					slog.Info(err.Error(), "player", pname, "command", command, "npc", args)
+				}
 			}
 		}
 

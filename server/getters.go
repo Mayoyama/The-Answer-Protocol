@@ -9,14 +9,6 @@ func getZoneObj(loc string) (*Zone, bool) {
 	return zone, ok
 }
 
-// func (z *Zone) getZoneName() string {
-// 	z.ZoneMu.Lock()
-// 	zname := z.ZoneName
-// 	z.ZoneMu.Unlock()
-
-// 	return zname
-// }
-
 // getZoneID returns the player's current zone ID.
 func (p *Player) getZoneID() string {
 	p.PlayerMu.Lock()
@@ -69,4 +61,36 @@ func (n *NPC) getNPCName() string {
 	n.NPCMu.Unlock()
 
 	return sname
+}
+
+// getNPCQuest returns the first quest this NPC can currently offer the player — skipping quests
+// the player already has and ones whose prerequisite isn't completed — or false if none are eligible.
+func (n *NPC) getNPCQuest(player *Player) (string, *Quest, bool) {
+	n.NPCMu.Lock()
+	defer n.NPCMu.Unlock()
+
+	if n.Quests == nil {
+		return "", nil, false
+	}
+
+	player.PlayerMu.Lock()
+	defer player.PlayerMu.Unlock()
+
+	for k, q := range n.Quests {
+		if _, alreadyHave := player.Quests[k]; alreadyHave {
+			continue
+		}
+
+		if q.Requires != "" {
+			prereq, ok := player.Quests[q.Requires]
+
+			if !ok || prereq.Status != Completed {
+				continue
+			}
+		}
+
+		return k, q, true
+	}
+
+	return "", nil, false
 }

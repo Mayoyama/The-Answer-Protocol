@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-// zones holds all loaded zones, keyed by zone ID.
+// zones holds all loaded zones, keyed by their world.yaml key.
 var (
 	zones   = make(map[string]*Zone)
 	zonesMu sync.Mutex
@@ -27,6 +27,8 @@ type Zone struct {
 
 // handleWho sends the player a JSON count of players in their room and on the server.
 func handleWho(player *Player, loginState *LoginStatus, command string) {
+	pname := player.getPlayerName()
+
 	onlinePlayersMu.Lock()
 	onlineCount := len(onlinePlayers)
 	onlinePlayersMu.Unlock()
@@ -36,7 +38,7 @@ func handleWho(player *Player, loginState *LoginStatus, command string) {
 
 	if !ok {
 		handleInternalError(player.Conn, InternalErr, loginState,
-			slog.String("player", player.getPlayerName()),
+			slog.String("player", pname),
 			slog.Any("loc", currLoc),
 			slog.String("command", "WHO"),
 		)
@@ -62,13 +64,13 @@ func handleWho(player *Player, loginState *LoginStatus, command string) {
 
 	if err != nil {
 		_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
-		slog.Error(JSONErr.Error(), "err", err, "player", player.getPlayerName(), "command", "WHO")
+		slog.Error(JSONErr.Error(), "err", err, "player", pname, "command", "WHO")
 
 		return
 	}
 
 	_, _ = fmt.Fprintf(player.Conn, "OK %s\n", string(info))
-	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK "+string(info), "command", command)
+	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+string(info), "command", command)
 }
 
 // handleLook sends the player a JSON description of their current room.
