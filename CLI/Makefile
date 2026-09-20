@@ -8,9 +8,11 @@ install:
 
 lint:
 	go vet
+	cargo check
 
 format:
 	gofmt -l -w .
+	cargo fmt
 
 clean:
 	go clean
