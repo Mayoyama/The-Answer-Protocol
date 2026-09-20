@@ -12,18 +12,52 @@ import (
 )
 
 // gracefulQuit sends QUIT to the server and waits briefly for a response before exiting.
-func gracefulQuit(conn net.Conn, servErr chan error, timeout time.Duration) {
+func gracefulQuit(conn net.Conn, serverResponses chan string, serverErr chan error, timeout time.Duration) {
+	_ = conn.SetWriteDeadline(time.Now().Add(timeout))
 	_, _ = fmt.Fprintln(conn, "QUIT")
 
-	select {
-	case err := <-servErr:
-		if err != nil {
-			_, _ = fmt.Printf("ERROR READING_TO_FROM_SERVER: %v.\nDISCONNECTED.\n", err)
-		}
+	deadline := time.After(timeout)
 
-	case <-time.After(timeout):
-		fmt.Println("No response from server... exiting program anyway")
+	for {
+		select {
+		case response := <-serverResponses:
+			if strings.TrimSpace(response) == "OK bye" {
+				_, _ = fmt.Print(response)
+
+				return
+			}
+
+		case err := <-serverErr:
+			if err != nil {
+				_, _ = fmt.Printf("ERROR READING_TO_FROM_SERVER: %v.\nDISCONNECTED.\n", err)
+
+				return
+			}
+
+		case <-deadline:
+			fmt.Println("No response from server... exiting program anyway")
+
+			return
+		}
 	}
+}
+
+// handleLoginReply prints the server's reply to CONNECT and returns the accepted
+// username, or "" if the reply wasn't OK (in which case it prompts again).
+func handleLoginReply(response, input string) string {
+	var username string
+
+	if strings.HasPrefix(response, "OK") {
+		username = input
+	}
+
+	_, _ = fmt.Println(response)
+
+	if username == "" {
+		_, _ = fmt.Println("Enter a new username between 2 and 10 characters:")
+	}
+
+	return username
 }
 
 // main connects to the server, logs the player in, and relays stdin/server traffic until disconnect.
@@ -43,46 +77,14 @@ func main() {
 
 	TAPReader := bufio.NewReader(conn)
 	stdinScanner := bufio.NewScanner(os.Stdin)
-	greeting, err := TAPReader.ReadString('\n')
 
-	if err != nil {
-		fmt.Println("Connected but failed to read from TCP: ", err)
-		return
-	}
-
-	fmt.Println(greeting)
-
-	var username string
-
-	for username == "" {
-		fmt.Println("Input new username: ")
-
-		if !stdinScanner.Scan() {
-			fmt.Println("Error reading from stdin: ", stdinScanner.Err())
-
-			return
-		}
-
-		input := stdinScanner.Text()
-		_, _ = fmt.Fprintln(conn, "CONNECT "+input)
-
-		if response, err := TAPReader.ReadString('\n'); err != nil {
-			fmt.Println("Error reading from TAP server: ", err)
-
-			return
-
-		} else {
-			if strings.HasPrefix(response, "OK") {
-				username = input
-			}
-
-			fmt.Println(response)
-		}
-	}
-
+	serverResponses := make(chan string)
 	serverErr := make(chan error)
-	lines := make(chan string)
+	userInput := make(chan string)
 	stdinErr := make(chan error)
+
+	quitTimeoutDuration := time.Second * 3
+	commandTimeoutDuration := time.Second * 10
 
 	go func() {
 		for {
@@ -93,31 +95,78 @@ func main() {
 				return
 			}
 
-			fmt.Print(response)
-
-			if strings.TrimSpace(response) == "OK bye" {
-				serverErr <- nil
-
-				return
-			}
+			serverResponses <- response
 		}
 	}()
 
 	go func() {
-		for stdinScanner.Scan() != false {
-			lines <- stdinScanner.Text()
+		for stdinScanner.Scan() {
+			userInput <- stdinScanner.Text()
 		}
 
 		stdinErr <- stdinScanner.Err()
 	}()
 
+	var (
+		username     string
+		nameInput    string
+		TCPConnected bool
+		// stdinGateLine blocks userInput channel when nil. It stays nil until the server greeting
+		// has been printed, and while a CONNECT reply is pending, so only one CONNECT is ever active.
+		stdinGateLine chan string
+	)
+
 	for {
 		select {
-		case input := <-lines:
-			_, _ = fmt.Fprintln(conn, input)
+		case input := <-stdinGateLine:
+			if username == "" {
+				nameInput = input
+				stdinGateLine = nil
+
+				_, _ = fmt.Fprintln(conn, "CONNECT "+input)
+
+			} else {
+				_ = conn.SetWriteDeadline(time.Now().Add(commandTimeoutDuration))
+				_, err = fmt.Fprintln(conn, input)
+
+				if err != nil {
+					_, _ = fmt.Printf("Error reading to/from server: %v.\nDisconnected.\n", err)
+
+					return
+				}
+			}
+
+		case response := <-serverResponses:
+			switch {
+			case !TCPConnected:
+				TCPConnected = true
+
+				_, _ = fmt.Println(response)
+				_, _ = fmt.Println("Enter a new username between 2 and 10 characters:")
+
+				stdinGateLine = userInput
+
+			case username == "":
+				username = handleLoginReply(response, nameInput)
+				stdinGateLine = userInput
+
+			default:
+				_, _ = fmt.Print(response)
+
+				if strings.TrimSpace(response) == "OK bye" {
+					return
+				}
+			}
 
 		case err := <-serverErr:
-			if err != nil {
+			switch {
+			case !TCPConnected:
+				_, _ = fmt.Println("Connected but failed to read from TCP server: ", err)
+
+			case username == "":
+				_, _ = fmt.Println("Error reading from TAP server: ", err)
+
+			default:
 				_, _ = fmt.Printf("Error reading to/from server: %v.\nDisconnected.\n", err)
 			}
 
@@ -131,14 +180,14 @@ func main() {
 				_, _ = fmt.Println("Ctrl+D/EOF detected. Closing connection to server...")
 			}
 
-			gracefulQuit(conn, serverErr, 3*time.Second)
+			gracefulQuit(conn, serverResponses, serverErr, quitTimeoutDuration)
 
 			return
 
 		case <-sigCh:
 			_, _ = fmt.Println("Ctrl+C or shutdown request detected. Closing connection to server...")
 
-			gracefulQuit(conn, serverErr, 3*time.Second)
+			gracefulQuit(conn, serverResponses, serverErr, quitTimeoutDuration)
 
 			return
 		}
