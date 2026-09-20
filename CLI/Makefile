@@ -1,10 +1,14 @@
-.PHONY: install run lint clean format
+.PHONY: install run run-go-client lint clean format
 
 run:
+	@cargo run
+
+run-go-client:
 	@go run CLI
 
 install:
 	go build
+	cargo build
 
 lint:
 	go vet
@@ -16,3 +20,4 @@ format:
 
 clean:
 	go clean
+	cargo clean

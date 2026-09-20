@@ -181,7 +181,7 @@ fn run() -> Result<()> {
                 if login.login_state == LoginState::TCPWaiting {
                     login.login_state = LoginState::ConnCommReady;
 
-                    println!("{}", trimmed_response);
+                    println!("{}", response);
 
                     println!("Enter a new username between 2 and 10 characters:");
 
@@ -193,7 +193,7 @@ fn run() -> Result<()> {
                 }
 
                 if login.login_state == LoginState::ConnCommReplyPending {
-                    println!("{}", trimmed_response);
+                    println!("{}", response);
 
                     if trimmed_response.starts_with("OK") {
                         login.login_state = LoginState::LoggedIn;
