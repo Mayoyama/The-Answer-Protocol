@@ -10,6 +10,7 @@ world:
         - "item.old_lute"
       spawns:
         - "george"
+        - "barbarian"
 
     town_square:
       name: "Town Square"
@@ -52,11 +53,26 @@ npcs:
       - "Welcome, traveler. Mind the floorboards."
       - "Haven't seen a stranger 'round these parts in weeks."
     stats:
-      hp: 25
+      hp: 72
+      str: 5
+      battle_skill: 2
     attackable: false
     role: quest giver
     quests:
     - "bread_for_kassandra"
+
+  barbarian:
+    name: Barbarian
+    description: A gruff looking man looking to pick a fight.
+    dialogue:
+      - "What the hell do you want, runt?"
+      - "Leave me be, scrawny runt..."
+    stats:
+      hp: 90
+      str: 7
+      battle_skill: 5
+    attackable: true
+    role: enemy
 
   bertha:
     name: "Bertha"
@@ -65,7 +81,9 @@ npcs:
       - "Fresh turnips, best in town!"
       - "Careful where you step, this square gets crowded."
     stats:
-      hp: 20
+      hp: 55
+      str: 4
+      battle_skill: 0
     attackable: false
     role: "general"
 
@@ -76,7 +94,9 @@ npcs:
       - "They say the old well east of here holds secrets."
       - "You didn't hear this from me."
     stats:
-      hp: 18
+      hp: 48
+      str: 4
+      battle_skill: 10
     attackable: false
     role: general
 

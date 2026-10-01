@@ -27,6 +27,25 @@ func (p *Player) getPlayerName() string {
 	return name
 }
 
+// getPlayerStatus returns the player's status as a lowercase string for responses.
+func getPlayerStatus(player *Player) string {
+	player.PlayerMu.Lock()
+	defer player.PlayerMu.Unlock()
+
+	switch player.Status {
+	case Healthy:
+		return "healthy"
+	case Weakened:
+		return "weakened"
+	case Injured:
+		return "injured"
+	case Engaged:
+		return "engaged"
+	default:
+		return "unknown"
+	}
+}
+
 // getPlayerGroupInfo returns the group the player belongs to, or nil.
 func (p *Player) getPlayerGroupInfo() *Group {
 	p.PlayerMu.Lock()
