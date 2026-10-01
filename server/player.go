@@ -9,6 +9,16 @@ import (
 	"time"
 )
 
+type Status int
+
+const (
+	Healthy Status = iota
+	Weakened
+	Injured
+	Engaged
+)
+
+
 // onlinePlayers holds all currently connected players, keyed by username.
 var (
 	onlinePlayers   = make(map[string]*Player)
@@ -21,7 +31,9 @@ type Player struct {
 	MaxHP          int
 	CurrHP         int
 	CurrLoc        string
-	Status         string
+	Status         Status
+	Strength int
+	BattleSkill int
 	GroupInfo      *Group
 	Quests         map[string]*PlayerQuest
 	Inventory      map[string]bool
@@ -42,6 +54,9 @@ func newPlayer(username, startLoc string, conn net.Conn) *Player {
 		MaxHP:     100,
 		CurrHP:    100,
 		CurrLoc:   startLoc,
+		Status: Healthy,
+		Strength: 7,
+		BattleSkill: 7,
 		Inventory: make(map[string]bool),
 		Quests:    make(map[string]*PlayerQuest),
 		Conn:      conn,
@@ -111,12 +126,14 @@ func (p *Player) cleanupPlayerData() {
 
 // printStatus sends the player's HP/status as a JSON response.
 func printStatus(player *Player, command, args string) {
+	pStatus := getPlayerStatus(player)
+	
 	player.PlayerMu.Lock()
 
 	playerStats := PlayerStatusResponse{
 		HP:     player.CurrHP,
 		MaxHP:  player.MaxHP,
-		Status: player.Status,
+		Status: pStatus,
 	}
 
 	statPrint, err := json.Marshal(playerStats)
