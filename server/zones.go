@@ -144,7 +144,7 @@ func handleLook(player *Player, loginState *LoginStatus) {
 	slog.Info("SYS_MESSAGE", "player", pname, "message", string(info), "command", "LOOK")
 }
 
-func shiftZone(player *Player, pname string, fromZone, newZone *Zone) string {
+func shiftZone(player *Player, pname, newLoc string, fromZone, newZone *Zone) string {
 
 	fromZone.ZoneMu.Lock()
 	delete(fromZone.InZone, pname)
@@ -157,7 +157,7 @@ func shiftZone(player *Player, pname string, fromZone, newZone *Zone) string {
 	fromZone.ZoneMu.Unlock()
 
 	player.PlayerMu.Lock()
-	player.CurrLoc = newZone.ZoneID
+	player.CurrLoc = newLoc
 	player.PlayerMu.Unlock()
 
 	newZone.ZoneMu.Lock()
@@ -201,7 +201,7 @@ func handleMove(direction string, player *Player) (string, error) {
 		return currLoc, InternalErr
 	}
 
-	newZoneID := shiftZone(player, pname, zone, newZone)
+	newZoneID := shiftZone(player, pname, newLoc, zone, newZone)
 
 	_, _ = fmt.Fprintln(player.Conn, "OK room="+newZoneID)
 	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK room="+newZoneID, "command", "MOVE", "prev_loc", currLoc)
@@ -225,7 +225,7 @@ func respawnPlayer(player *Player) (string, error) {
 		return currLoc, InternalErr
 	}
 
-	newZoneID := shiftZone(player, pname, zone, newZone)
+	newZoneID := shiftZone(player, pname, respawnZone, zone, newZone)
 
 	_, _ = fmt.Fprintln(player.Conn, EvtPlayerRespawn())
 	slog.Info("SYS_MESSAGE", "player", pname, "message", EvtPlayerRespawn(), "reason", "playerDeath", "prev_loc", currLoc, "curr_loc", newZoneID)

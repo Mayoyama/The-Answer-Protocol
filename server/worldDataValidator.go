@@ -10,7 +10,7 @@ import (
 // startingZone is the zone new players spawn into, and the root zone used for connectivity/cycle validation.
 const (
 	startingZone = "taverne"
-	respawnZone  = "taverne"
+	respawnZone  = "chapel"
 )
 
 // validateMapConnectivity confirms every zone is reachable from startingZone via a breadth-first walk, returning an error if any zone is unreachable.

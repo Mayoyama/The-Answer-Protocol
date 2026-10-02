@@ -3,8 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // YmlData is the top-level structure of world.yaml.
@@ -209,6 +210,9 @@ func ParseYmlData(data []byte) error {
 
 		case "quest giver", "Quest giver", "Quest Giver", "quest_giver":
 			npcRole = QuestGiver
+
+		case "healer", "Healer":
+			npcRole = Healer
 
 		case "general", "General":
 			npcRole = General

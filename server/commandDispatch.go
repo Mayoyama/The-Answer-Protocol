@@ -95,7 +95,7 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 			}
 		}
 
-	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "QUEST", "ACCEPT":
+	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "FLEE", "QUEST", "ACCEPT":
 		if args == "" {
 			_, _ = fmt.Fprintln(player.Conn, MissingArgsErr.Error())
 			slog.Info(MissingArgsErr.Error(), "player", pname, "command", command, "args", args)

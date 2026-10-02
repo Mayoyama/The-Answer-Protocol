@@ -1,63 +1,306 @@
 world:
   locations:
     taverne:
-      name: "The Taverne"
-      description: "A dim, smoky room with a long wooden bar and a crackling hearth."
+      name: The Taverne
+      description: A dim, smoky room with a long wooden bar and a crackling hearth.
       exits:
-        east: "town_square"
+        east: fountain_square
       items:
         - "item.tankard"
         - "item.old_lute"
       spawns:
-        - "george"
-        - "barbarian"
+        - george
 
-    town_square:
-      name: "Town Square"
-      description: "An open cobblestone square with a dry fountain at its center."
+    fountain_square:
+      name: Fountain Square
+      description: An open cobblestone square at the heart of the town.
       exits:
-        west: "taverne"
+        north: chapel
+        east: old_well
+        south: market_square
+        west: taverne
       items:
         - "item.wanted_poster"
         - "item.coin_purse"
+        - "item.fountain"
       spawns:
-        - "bertha"
-        - "kassandra"
+        - kassandra
+
+    chapel:
+      name: Chapel
+      description: A narrow stone chapel. Candle smoke has blackened the beams above the altar.
+      exits:
+        east: churchyard
+        south: fountain_square
+      items:
+        - "item.bell_rope"
+        - "item.prayer_candle"
+      spawns:
+        - father_tieu
+
+    churchyard:
+      name: Churchyard
+      description: Leaning headstones crowd a patch of uneven ground. A half-dug grave waits at the far end.
+      exits:
+        south: old_well
+        west: chapel
+      items:
+        - "item.gravedigger_shovel"
+      spawns:
+        - osric
+
+    old_well:
+      name: Old Well
+      description: A moss-covered well with a creaking winch. The rope disappears further down than it should.
+      exits:
+        north: churchyard
+        south: mill
+        west: fountain_square
+        down: cistern
+      items:
+        - "item.wooden_bucket"
+        - "item.rusted_winch"
+
+    cistern:
+      name: Cistern
+      description: A cramped stone chamber beneath the well. Water drips somewhere in the dark, and something shifts above you.
+      exits:
+        up: old_well
+      items:
+        - "item.wall_marks"
+      spawns:
+        - cave_bat
+
+    market_square:
+      name: Market Square
+      description: A busy marketplace, loud with haggling and the clatter of carts. The nearest stall is piled high with turnips.
+      exits:
+        north: fountain_square
+        east: mill
+        west: smithy
+      items:
+        - "item.berthas_stall"
+        - "item.notice_board"
+      spawns:
+        - bertha
+
+    smithy:
+      name: Smithy
+      description: A low, hot workshop. The forge glows orange and the air tastes of iron.
+      exits:
+        east: market_square
+      items:
+        - "item.anvil"
+        - "item.metal_shavings"
+      spawns:
+        - brannoc
+
+    mill:
+      name: Mill
+      description: A watermill's wheel turns slowly beside the river. Flour dust coats every surface.
+      exits:
+        north: old_well
+        east: fallow_field
+        west: market_square
+      items:
+        - "item.millstone"
+        - "item.wheat_husks"
+      spawns:
+        - hilde
+
+    fallow_field:
+      name: Fallow Field
+      description: An overgrown field at the edge of town. A patch of grass has been flattened in a rough circle.
+      exits:
+        west: mill
+      items:
+        - "item.broken_fence"
+        - "item.field_flower"
+      spawns:
+        - barbarian
 
 items:
   tankard:
-    name: "Dented Tankard"
-    description: "A well-used tankard, still smells faintly of ale."
+    name: Dented Tankard
+    description: A well-used tankard, still smells faintly of ale.
     obtainable: true
 
   old_lute:
-    name: "Old Lute"
-    description: "A battered lute missing one string."
-    obtainable: true
+    name: Old Lute
+    description: "A battered lute missing one string, hung above the hearth. George's prized possession."
+    obtainable: false
 
   wanted_poster:
-    name: "Wanted Poster"
-    description: "A weathered poster with a crude sketch and a bounty amount."
-    obtainable: true
+    name: Wanted Poster
+    description: "A crude sketch of a hulking, bearded man. 'Wanted for brawling and property damage.'"
+    obtainable: false
 
   coin_purse:
-    name: "Small Coin Purse"
-    description: "A leather purse, lighter than it looks."
+    name: Empty Coin Purse
+    description: "A small cloth pouch. Has the initials 'M.S.' embroidered in gold thread."
+    obtainable: true
+
+  fountain:
+    name: Weathered Fountain
+    description: A weathered stone fountain, nearly as old as the town itself. Water slowly trickles down its moss-streaked tiers.
+    obtainable: false
+
+  bell_rope:
+    name: Bell Rope
+    description: A thick rope hanging from the bell tower. Best left alone.
+    obtainable: false
+
+  prayer_candle:
+    name: Prayer Candle
+    description: A short, white candle, clearly used.
+    obtainable: true
+
+  gravedigger_shovel:
+    name: "Gravedigger's Shovel"
+    description: "A sturdy shovel planted upright in the dirt. Osric won't part with it."
+    obtainable: false
+
+  wooden_bucket:
+    name: Wooden Bucket
+    description: A sodden, spring-worn bucket, lying neglected by the well.
+    obtainable: true
+
+  rusted_winch:
+    name: Rusted Winch
+    description: An iron winch, stiff with rust. It groans when turned.
+    obtainable: false
+
+  wall_marks:
+    name: Scratched Wall Marks
+    description: Rows of tally marks scratched into the stone. Someone was clearly counting something.
+    obtainable: false
+
+  berthas_stall:
+    name: "Bertha's Stall"
+    description: A wooden stall stacked with crates of turnips. A few of the crates seem to be freshly mended.
+    obtainable: false
+
+  notice_board:
+    name: Notice Board
+    description: A board covered in old notices, mostly lost goats and lost tempers.
+    obtainable: false
+
+  anvil:
+    name: Anvil
+    description: A heavy iron anvil, scarred from years of work.
+    obtainable: false
+
+  metal_shavings:
+    name: Metal Shavings
+    description: A pinch of bright metal shavings from the smithy floor.
+    obtainable: true
+
+  millstone:
+    name: Millstone
+    description: A great round stone, worn smooth at the centre.
+    obtainable: false
+
+  wheat_husks:
+    name: Handful of Wheat Husks
+    description: Dry, scratchy husks. They get everywhere.
+    obtainable: true
+
+  broken_fence:
+    name: Broken Fence
+    description: A stretch of fence smashed flat, as if something large went through it.
+    obtainable: false
+
+  field_flower:
+    name: Field Flower
+    description: A small wild flower with pale yellow petals.
     obtainable: true
 
 npcs:
   george:
-    name: "George"
-    description: "The tavern keeper, wiping down the same mug for the tenth time."
+    name: George
+    description: The tavern keeper, wiping down the same mug for the tenth time.
     dialogue:
       - "Welcome, traveler. Mind the floorboards."
       - "Haven't seen a stranger 'round these parts in weeks."
     stats:
-      hp: 72
+      hp: 62
     attackable: false
     role: quest giver
     quests:
     - "bread_for_kassandra"
+
+  bertha:
+    name: Bertha
+    description: A stout market vendor arranging crates of vegetables.
+    dialogue:
+      - "Fresh turnips, best in town!"
+      - "Careful where you step, this square gets crowded."
+    stats:
+      hp: 55
+    attackable: false
+    role: quest giver
+    quests:
+    - "a_lesson_in_manners"
+
+  kassandra:
+    name: Kassandra
+    description: "A cloaked figure watching the crowd from the fountain's edge."
+    dialogue:
+      - "They say the old well east of here holds secrets."
+      - "You didn't hear this from me."
+    stats:
+      hp: 48
+    attackable: false
+    role: quest giver
+    quests:
+    - "something_in_the_well"
+
+  father_tieu:
+    name: Father Tieu
+    description: A soft-spoken priest in a worn dark-grey robe, tending the altar candles.
+    dialogue:
+      - "Sit if you like. The pews are hard, but they're quiet."
+      - "May the Light always guide you on your way."
+    heal_dialogue: "I mend what I can. The rest I leave to the Light's divine will."
+    stats:
+      hp: 41
+    attackable: false
+    role: healer
+
+  osric:
+    name: Osric
+    description: A wiry gravedigger leaning on a shovel, in no hurry to finish his work.
+    dialogue:
+      - "Ground's soft this time of year. Makes the work easier, if not the reason for it."
+      - "I've heard the well at night. I don't go near it."
+    stats:
+      hp: 50
+    attackable: false
+    role: general
+
+  brannoc:
+    name: Brannoc
+    description: A strapping, young smith with forearms like tree trunks. He seems aware of it, too.
+    dialogue:
+      - "Mind the sparks. And the arms. Both have been known to leave a mark."
+      - "Folk come for the swords. Some stay for the view. (flexes)"
+      - "Strongest steel in town. Second strongest if you count me. Hrrah-hah-hah-ha!"
+    stats:
+      hp: 86
+    attackable: false
+    role: general
+
+  hilde:
+    name: Hilde
+    description: A sturdy miller, dusted white from head to toe.
+    dialogue:
+      - "The wheel's older than I am. Some days it complains more than I do!"
+      - "Mind the husks, dearie; they stick to your boots for days."
+      - "Flour gets into everything... my bread, my hair, even my dreams! (giggles)"
+    stats:
+      hp: 53
+    attackable: false
+    role: general
 
   barbarian:
     name: Barbarian
@@ -77,39 +320,64 @@ npcs:
     attackable: true
     role: enemy
 
-  bertha:
-    name: "Bertha"
-    description: "A stout market vendor arranging crates of vegetables."
+  cave_bat:
+    name: Cave Bat
+    description: A large bat hanging eerily from the cistern ceiling, wings folded tight.
     dialogue:
-      - "Fresh turnips, best in town!"
-      - "Careful where you step, this square gets crowded."
+      - "...chk...chk-chk...chrrrk..."
+    battle_dialogue:
+      battle_start: "Skree!"
+      player_victory: "...skree..."
+      npc_victory: "SKREEEEEE!"
     stats:
-      hp: 55
-    attackable: false
-    role: "general"
-
-  kassandra:
-    name: "Kassandra"
-    description: "A cloaked figure watching the crowd from the fountain's edge."
-    dialogue:
-      - "They say the old well east of here holds secrets."
-      - "You didn't hear this from me."
-    stats:
-      hp: 48
-    attackable: false
-    role: general
+      hp: 36
+      str: 3
+      battle_skill: 4
+      dex: 30
+    attackable: true
+    role: enemy
 
 quests:
   bread_for_kassandra:
-    name: "A loaf for the needy"
-    description: "George seems to need help with his daily chores."
+    name: A loaf for the needy
+    description: George seems to need help with his daily chores.
     type: delivery
     requires: ""
     steps:
-      - talk_to: "george"
+      - talk_to: george
         dialogue: "Hey there! Boy am I glad you're here. Be a champ and take this 'keyitem.Loaf' to Kassandra. Thanks!"
-      - talk_to: "kassandra"
-        dialogue: "What's this, a loaf of bread? I'm not hungry, but thanks. Take this, I found it while out walking this morning and have no use for it."
+      - talk_to: kassandra
+        dialogue: "What's this, a loaf of bread? So George thinks to woo me with crumbs... (looks into your eyes...) Ah, so you're the one... This found its way to me this morning but now it has found its true owner."
     reward:
       key_item: "rusty_dagger"
-      gold: 50 
+
+  something_in_the_well:
+    name: Something in the Well
+    description: Strange sounds rise from the old well at night. Kassandra means to know why.
+    type: battle
+    requires: bread_for_kassandra
+    steps:
+      - talk_to: kassandra
+        dialogue: "The well sings at night. They say she mourns those who fell into the dark below. I've always wondered who she really weeps for."
+      - enter_area: old_well
+        message: You hear eerie sounds coming from deep inside the well...
+      - battle: cave_bat
+      - talk_to: "kassandra"
+        dialogue: "Only a bat... Pity. I'd hoped for something more. (Kassandra hands you something) The pieces are coming together..."
+    reward:
+      key_item: "small_gem" 
+      gold: 20
+
+  a_lesson_in_manners:
+    name: "A Lesson in Manners"
+    description: Bertha seems to have had trouble with an unwelcome visitor.
+    type: battle
+    requires: ""
+    steps:
+      - talk_to: bertha
+        dialogue: "Some brute came through here the other day, kicked over half of my crates and laughed about it. Someone ought to teach him a lesson."
+      - battle: barbarian
+      - talk_to: bertha
+        dialogue: "Oh, you taught that oaf a lesson? Can't thank you enough. Here, take this, and the next turnip's on me."
+    reward:
+      gold: 10 
