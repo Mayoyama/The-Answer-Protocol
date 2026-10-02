@@ -38,6 +38,7 @@ var (
 	NPCNotFoundErr    = ProtocolError{Code: 404, ErrorMessage: "NPC_NOT_FOUND"}
 	PlayerNotFoundErr = ProtocolError{Code: 404, ErrorMessage: "PLAYER_NOT_FOUND"}
 	NPCNotHostileErr  = ProtocolError{Code: 405, ErrorMessage: "NPC_NOT_HOSTILE"}
+	NPCOccupiedErr    = ProtocolError{Code: 405, ErrorMessage: "NPC_CURRENTLY_OCCUPIED"}
 	NoQuestAvailErr   = ProtocolError{Code: 406, ErrorMessage: "NO_QUEST_AVAILABLE"}
 )
 

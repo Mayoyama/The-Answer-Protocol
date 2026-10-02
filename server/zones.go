@@ -144,6 +144,38 @@ func handleLook(player *Player, loginState *LoginStatus) {
 	slog.Info("SYS_MESSAGE", "player", pname, "message", string(info), "command", "LOOK")
 }
 
+func shiftZone(player *Player, pname string, fromZone, newZone *Zone) string {
+
+	fromZone.ZoneMu.Lock()
+	delete(fromZone.InZone, pname)
+
+	for _, p := range fromZone.InZone {
+		_, _ = fmt.Fprintln(p.Conn, EvtZoneLeave(pname))
+		slog.Info(EvtZoneLeave(pname), "loc", fromZone.ZoneID)
+	}
+
+	fromZone.ZoneMu.Unlock()
+
+	player.PlayerMu.Lock()
+	player.CurrLoc = newZone.ZoneID
+	player.PlayerMu.Unlock()
+
+	newZone.ZoneMu.Lock()
+	newZoneID := newZone.ZoneID
+	newZone.InZone[pname] = player
+
+	for _, p := range newZone.InZone {
+		if p != player {
+			_, _ = fmt.Fprintln(p.Conn, EvtZoneEnter(pname))
+			slog.Info(EvtZoneEnter(pname), "loc", newZone.ZoneName)
+		}
+	}
+
+	newZone.ZoneMu.Unlock()
+
+	return newZoneID
+}
+
 // handleMove moves the player through an exit to an adjacent zone.
 func handleMove(direction string, player *Player) (string, error) {
 	pname := player.getPlayerName()
@@ -169,35 +201,34 @@ func handleMove(direction string, player *Player) (string, error) {
 		return currLoc, InternalErr
 	}
 
-	zone.ZoneMu.Lock()
-	delete(zone.InZone, pname)
-
-	for _, p := range zone.InZone {
-		_, _ = fmt.Fprintln(p.Conn, EvtZoneLeave(pname))
-		slog.Info(EvtZoneLeave(pname), "loc", currLoc)
-	}
-
-	zone.ZoneMu.Unlock()
-
-	player.PlayerMu.Lock()
-	player.CurrLoc = newLoc
-	player.PlayerMu.Unlock()
-
-	newZone.ZoneMu.Lock()
-	newZoneID := newZone.ZoneID
-	newZone.InZone[pname] = player
-
-	for _, p := range newZone.InZone {
-		if p != player {
-			_, _ = fmt.Fprintln(p.Conn, EvtZoneEnter(pname))
-			slog.Info(EvtZoneEnter(pname), "loc", newZone.ZoneName)
-		}
-	}
-
-	newZone.ZoneMu.Unlock()
+	newZoneID := shiftZone(player, pname, zone, newZone)
 
 	_, _ = fmt.Fprintln(player.Conn, "OK room="+newZoneID)
 	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK room="+newZoneID, "command", "MOVE", "prev_loc", currLoc)
+
+	return "", nil
+}
+
+func respawnPlayer(player *Player) (string, error) {
+	pname := player.getPlayerName()
+	currLoc := player.getZoneID()
+
+	zone, ok := getZoneObj(currLoc)
+
+	if !ok {
+		return currLoc, InternalErr
+	}
+
+	newZone, ok := getZoneObj(respawnZone)
+
+	if !ok {
+		return currLoc, InternalErr
+	}
+
+	newZoneID := shiftZone(player, pname, zone, newZone)
+
+	_, _ = fmt.Fprintln(player.Conn, EvtPlayerRespawn())
+	slog.Info("SYS_MESSAGE", "player", pname, "message", EvtPlayerRespawn(), "reason", "playerDeath", "prev_loc", currLoc, "curr_loc", newZoneID)
 
 	return "", nil
 }

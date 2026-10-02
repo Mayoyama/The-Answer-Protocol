@@ -18,7 +18,6 @@ const (
 	Engaged
 )
 
-
 // onlinePlayers holds all currently connected players, keyed by username.
 var (
 	onlinePlayers   = make(map[string]*Player)
@@ -27,13 +26,13 @@ var (
 
 // Player represents a connected player and their in-game state.
 type Player struct {
-	Username       string
-	MaxHP          int
-	CurrHP         int
-	CurrLoc        string
-	Status         Status
-	Strength int
-	BattleSkill int
+	Username    string
+	MaxHP       int
+	CurrHP      int
+	CurrLoc     string
+	Status      Status
+	BattleStats PlayerBattleStats
+
 	GroupInfo      *Group
 	Quests         map[string]*PlayerQuest
 	Inventory      map[string]bool
@@ -47,20 +46,52 @@ type Player struct {
 	PlayerMu       sync.Mutex
 }
 
+type PlayerBattleStats struct {
+	Strength    int
+	BattleSkill int
+	Dexterity   int
+}
+
 // newPlayer creates a new Player at the given starting location.
 func newPlayer(username, startLoc string, conn net.Conn) *Player {
-	return &Player{
-		Username:  username,
-		MaxHP:     100,
-		CurrHP:    100,
-		CurrLoc:   startLoc,
-		Status: Healthy,
-		Strength: 7,
+	battleStats := PlayerBattleStats{
+		Strength:    7,
 		BattleSkill: 7,
-		Inventory: make(map[string]bool),
-		Quests:    make(map[string]*PlayerQuest),
-		Conn:      conn,
+		Dexterity:   10,
 	}
+	return &Player{
+		Username:    username,
+		MaxHP:       100,
+		CurrHP:      100,
+		CurrLoc:     startLoc,
+		Status:      Healthy,
+		BattleStats: battleStats,
+		Inventory:   make(map[string]bool),
+		Quests:      make(map[string]*PlayerQuest),
+		Conn:        conn,
+	}
+}
+
+func (p *Player) setPlayerHPStatus() error {
+	p.PlayerMu.Lock()
+	defer p.PlayerMu.Unlock()
+
+	if p.MaxHP <= 0 {
+		return InternalErr
+	}
+
+	hpp := float64(p.CurrHP) / float64(p.MaxHP)
+
+	switch {
+	case hpp <= 0.3:
+		p.Status = Injured
+	case hpp <= 0.6:
+		p.Status = Weakened
+	default:
+		p.Status = Healthy
+	}
+
+	return nil
 }
 
 // cleanupPlayerData removes the player from their group, zone, and the online list on disconnect.
@@ -127,7 +158,7 @@ func (p *Player) cleanupPlayerData() {
 // printStatus sends the player's HP/status as a JSON response.
 func printStatus(player *Player, command, args string) {
 	pStatus := getPlayerStatus(player)
-	
+
 	player.PlayerMu.Lock()
 
 	playerStats := PlayerStatusResponse{

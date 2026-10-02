@@ -173,7 +173,18 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				}
 
 			case "ATTACK":
-				//function here
+				err := resolveAttackRequest(args, player)
+
+				switch err {
+				case nil:
+				case JSONErr:
+					_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
+					slog.Error(JSONErr.Error(), "player", pname, "command", command, "args", args)
+
+				default:
+					_, _ = fmt.Fprintln(player.Conn, err.Error())
+					slog.Info(err.Error(), "player", pname, "command", command, "npc", args)
+				}
 
 			case "QUEST":
 				err := checkNPCQuest(player, args)

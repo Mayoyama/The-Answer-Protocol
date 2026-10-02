@@ -82,6 +82,14 @@ func (n *NPC) getNPCName() string {
 	return sname
 }
 
+func (n *NPC) getNPCStats() NPCStats {
+	n.NPCMu.Lock()
+	npcStats := n.Stats
+	n.NPCMu.Unlock()
+
+	return npcStats
+}
+
 // getNPCQuest returns the first quest this NPC can currently offer the player — skipping quests
 // the player already has and ones whose prerequisite isn't completed — or false if none are eligible.
 func (n *NPC) getNPCQuest(player *Player) (string, *Quest, bool) {

@@ -214,7 +214,7 @@ func (pq *PlayerQuest) completeQuest(player *Player) {
 			_, _ = fmt.Fprintln(player.Conn, msg)
 			slog.Info("SYS_MESSAGE", "player", pname, "message", msg, "command", "completeQuest")
 		}
-		
+
 		if pq.Quest.Reward.Money > 0 {
 			player.Gold += pq.Quest.Reward.Money
 			msg = fmt.Sprintf("%s receives %d gold.", pname, pq.Quest.Reward.Money)

@@ -46,3 +46,7 @@ func EvtPartyChat(username, message string) string {
 func EvtPlayerCount(count int) string {
 	return fmt.Sprintf("EVT STATS players=%d", count)
 }
+
+func EvtPlayerRespawn() string {
+	return fmt.Sprintf("EVT RESPAWN room=%s", respawnZone)
+}
