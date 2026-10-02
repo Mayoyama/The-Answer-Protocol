@@ -25,10 +25,17 @@ type PlayerStatusResponse struct {
 
 // AttackResponse is the JSON payload for the ATTACK command.
 type AttackResponse struct {
-	AttackerHP int    `json:"attacker_hp"`
-	TargetHP   int    `json:"target_hp"`
-	Damage     int    `json:"damage"`
-	Status     string `json:"status"`
+	AttackerInitRoll int    `json:"attacker_init_roll"`
+	TargetInitRoll   int    `json:"target_init_roll"`
+	AttackerHP       int    `json:"attacker_hp"`
+	AttackerMaxHP    int    `json:"attacker_max_hp"`
+	TargetHP         int    `json:"target_hp"`
+	TargetMaxHP      int    `json:"target_max_hp"`
+	TargetDodged     bool   `json:"target_dodged"`
+	Damage           int    `json:"damage"`
+	AttackerDodged   bool   `json:"attacker_dodged"`
+	DamageReceived   int    `json:"damage_received"`
+	Status           string `json:"status"`
 }
 
 // QuestResponse is the JSON payload for a single quest.

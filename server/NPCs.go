@@ -29,13 +29,21 @@ type NPC struct {
 	NPCName     string
 	Description string
 	Dialogue    []string
-	ChatIndex int
+	ChatIndex   int
 	Quests      map[string]*Quest
 	Role        NPCRole
 	Attackable  bool
-	Stats       map[string]int
+	Occupied    bool
+	Stats       NPCStats
 	BaseLoc     *Zone
 	NPCMu       sync.Mutex
+}
+
+type NPCStats struct {
+	HP          int `yaml:"hp"`
+	Strength    int `yaml:"str"`
+	BattleSkill int `yaml:"battle_skill"`
+	Dexterity   int `yaml:"dex"`
 }
 
 // resolveNPC finds an NPC by ID or name (case-insensitive).
@@ -103,7 +111,6 @@ func (n *NPC) getDialogue(player *Player) (*PlayerQuest, string, bool) {
 func handleTalk(target string, player *Player) (string, error) {
 	pname := player.getPlayerName()
 	currLoc := player.getZoneID()
-
 	currZone, ok := getZoneObj(currLoc)
 
 	if !ok {
@@ -119,10 +126,10 @@ func handleTalk(target string, player *Player) (string, error) {
 	pq, dialogue, completedQuest := spawn.getDialogue(player)
 	sname := spawn.getNPCName()
 
-			_, _ = fmt.Fprintln(player.Conn, "OK "+dialogue)
+	_, _ = fmt.Fprintln(player.Conn, "OK "+dialogue)
 	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+dialogue, "command", "TALK", "NPC", sname, "loc", currLoc)
 
-		if completedQuest {
+	if completedQuest {
 		pq.completeQuest(player)
 	}
 

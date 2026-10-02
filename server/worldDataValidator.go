@@ -8,7 +8,10 @@ import (
 )
 
 // startingZone is the zone new players spawn into, and the root zone used for connectivity/cycle validation.
-const startingZone = "taverne"
+const (
+	startingZone = "taverne"
+	respawnZone  = "taverne"
+)
 
 // validateMapConnectivity confirms every zone is reachable from startingZone via a breadth-first walk, returning an error if any zone is unreachable.
 func validateMapConnectivity() error {
@@ -143,6 +146,22 @@ func ValidateWorldData() []error {
 			errs = append(errs, errors.New("VALIDATION_ERROR: INVALID_NPC_NAME [nil]"))
 		}
 
+		if spawn.Stats.HP <= 0 {
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_NPC_HP %s", spawn.NPCName))
+		}
+
+		if spawn.Stats.Strength < 0 {
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: NEGATIVE_NPC_STR %s", spawn.NPCName))
+		}
+
+		if spawn.Stats.BattleSkill < 0 {
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: NEGATIVE_NPC_BATTLESKILL %s", spawn.NPCName))
+		}
+
+		if spawn.Stats.Dexterity < 0 {
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: NEGATIVE_NPC_DEX %s", spawn.NPCName))
+		}
+
 		switch spawn.Role {
 		case QuestGiver:
 			if len(spawn.Quests) == 0 {
@@ -150,21 +169,25 @@ func ValidateWorldData() []error {
 			}
 
 			if spawn.Attackable {
-				errs = append(errs, errors.New("VALIDATION_ERROR: QUESTGIVER_CANNOT_BE_ATTACKABLE"))
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: QUESTGIVER_CANNOT_BE_ATTACKABLE %s", spawn.NPCName))
 			}
 
 		case Enemy:
 			if !spawn.Attackable {
-				errs = append(errs, errors.New("VALIDATION_ERROR: ENEMY_NOT_ATTACKABLE"))
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: ENEMY_NOT_ATTACKABLE %s", spawn.NPCName))
 			}
 
-			//if spawn HP is 0{
-			//	errs = append(errs, errors.New("VALIDATION_ERROR: ATTACKABLE_NPC_HP0"))
-			//}
+			if spawn.Stats.BattleSkill < 1 || spawn.Stats.Strength < 1 {
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: ATTACKABLE_NPC_WITH_INSUFFICIENT_STATS %s", spawn.NPCName))
+			}
+
+			if spawn.Stats.Dexterity > 90 {
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: ATTACKABLE_NPC_DEX_EXCEEDS_LIMITS %s", spawn.NPCName))
+			}
 
 		case General:
 			if spawn.Attackable {
-				errs = append(errs, errors.New("VALIDATION_ERROR: GENERAL_NPC_CANNOT_BE_ATTACKABLE"))
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: GENERAL_NPC_CANNOT_BE_ATTACKABLE %s", spawn.NPCName))
 			}
 		}
 

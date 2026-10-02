@@ -54,8 +54,6 @@ npcs:
       - "Haven't seen a stranger 'round these parts in weeks."
     stats:
       hp: 72
-      str: 5
-      battle_skill: 2
     attackable: false
     role: quest giver
     quests:
@@ -71,6 +69,7 @@ npcs:
       hp: 90
       str: 7
       battle_skill: 5
+      dex: 10
     attackable: true
     role: enemy
 
@@ -82,8 +81,6 @@ npcs:
       - "Careful where you step, this square gets crowded."
     stats:
       hp: 55
-      str: 4
-      battle_skill: 0
     attackable: false
     role: "general"
 
@@ -95,8 +92,6 @@ npcs:
       - "You didn't hear this from me."
     stats:
       hp: 48
-      str: 4
-      battle_skill: 10
     attackable: false
     role: general
 

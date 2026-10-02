@@ -38,13 +38,13 @@ type ParseItem struct {
 
 // ParseNPC is an NPC entry as read from world.yaml.
 type ParseNPC struct {
-	Name        string         `yaml:"name"`
-	Description string         `yaml:"description"`
-	Dialogue    []string       `yaml:"dialogue"`
-	Role        string         `yaml:"role"`
-	Attackable  bool           `yaml:"attackable"`
-	Stats       map[string]int `yaml:"stats"`
-	Quests      []string       `yaml:"quests"`
+	Name        string   `yaml:"name"`
+	Description string   `yaml:"description"`
+	Dialogue    []string `yaml:"dialogue"`
+	Role        string   `yaml:"role"`
+	Attackable  bool     `yaml:"attackable"`
+	Stats       NPCStats `yaml:"stats"`
+	Quests      []string `yaml:"quests"`
 }
 
 // ParseQuest is a quest entry as read from world.yaml.
