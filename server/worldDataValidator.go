@@ -84,9 +84,11 @@ func mapLoopExists() bool {
 // ValidateWorldData checks zones, items, and NPCs (including their quests) for consistency, returning a list of errors.
 func ValidateWorldData() []error {
 	var (
-		errs          []error
-		questList     []*Quest
-		existingItems = make(map[string]string)
+		errs            []error
+		questList       []*Quest
+		existingItems   = make(map[string]string)
+		obtainableItems []string
+		roleList        []string
 	)
 
 	if l := len(zones); l < 1 { // NEEDS TO BE 8
@@ -94,7 +96,7 @@ func ValidateWorldData() []error {
 	}
 
 	for _, z := range zones {
-		if z.ZoneName == "" {
+		if z.ZoneName == "" || strings.TrimSpace(z.ZoneName) == "" {
 			errs = append(errs, errors.New("VALIDATION_ERROR: INVALID_ROOM_NAME [nil]"))
 		}
 
@@ -102,8 +104,8 @@ func ValidateWorldData() []error {
 			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: %s %s", NoExitErr.ErrorMessage, z.ZoneName))
 		}
 
-		if z.Description == "" {
-			z.Description = "A mysterious area"
+		if z.Description == "" || strings.TrimSpace(z.Description) == "" {
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_ROOM_DESCRIPTION [nil] %s", z.ZoneName))
 		}
 
 		for dir, exit := range z.Exits {
@@ -125,11 +127,15 @@ func ValidateWorldData() []error {
 			}
 
 			if obj.Description == "" || strings.TrimSpace(obj.Description) == "" {
-				obj.Description = "An item."
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_ITEM_DESCRIPTION [nil] %s", obj.ItemName))
 			}
 
 			if _, exists := existingItems[itemID]; !exists {
 				existingItems[itemID] = z.ZoneName
+
+				if obj.Obtainable {
+					obtainableItems = append(obtainableItems, itemID)
+				}
 
 			} else {
 				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: DUPLICATE_ITEM %s, LOCATION: %s", itemID, z.ZoneName))
@@ -138,12 +144,12 @@ func ValidateWorldData() []error {
 	}
 
 	for _, spawn := range npcs {
-		if spawn.Description == "" {
-			spawn.Description = "Anonymous"
-		}
-
 		if spawn.NPCName == "" || strings.TrimSpace(spawn.NPCName) == "" {
 			errs = append(errs, errors.New("VALIDATION_ERROR: INVALID_NPC_NAME [nil]"))
+		}
+
+		if spawn.Description == "" || strings.TrimSpace(spawn.Description) == "" {
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_NPC_DESCRIPTION [nil] %s", spawn.NPCName))
 		}
 
 		if spawn.Stats.HP <= 0 {
@@ -172,6 +178,10 @@ func ValidateWorldData() []error {
 				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: QUESTGIVER_CANNOT_BE_ATTACKABLE %s", spawn.NPCName))
 			}
 
+			if !slices.Contains(roleList, "QuestGiver") {
+				roleList = append(roleList, "QuestGiver")
+			}
+
 		case Enemy:
 			if !spawn.Attackable {
 				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: ENEMY_NOT_ATTACKABLE %s", spawn.NPCName))
@@ -185,10 +195,41 @@ func ValidateWorldData() []error {
 				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: ATTACKABLE_NPC_DEX_EXCEEDS_LIMITS %s", spawn.NPCName))
 			}
 
+			if spawn.BattleDialogue.BattleStart == "" || strings.TrimSpace(spawn.BattleDialogue.BattleStart) == "" {
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: NPC_BATTLESTART_DIALOGUE [nil] %s", spawn.NPCName))
+			}
+
+			if spawn.BattleDialogue.PlayerVictory == "" || strings.TrimSpace(spawn.BattleDialogue.PlayerVictory) == "" {
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: NPC_PLAYERVICTORY_DIALOGUE [nil] %s", spawn.NPCName))
+			}
+
+			if spawn.BattleDialogue.NPCVictory == "" || strings.TrimSpace(spawn.BattleDialogue.NPCVictory) == "" {
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: NPC_NPCVICTORY_DIALOGUE [nil] %s", spawn.NPCName))
+			}
+
+			if !slices.Contains(roleList, "Enemy") {
+				roleList = append(roleList, "Enemy")
+			}
+
+		case Healer:
+			if spawn.Attackable {
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: HEALER_CANNOT_BE_ATTACKABLE %s", spawn.NPCName))
+			}
+
+			if !slices.Contains(roleList, "Healer") {
+				roleList = append(roleList, "Healer")
+			}
+
 		case General:
 			if spawn.Attackable {
 				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: GENERAL_NPC_CANNOT_BE_ATTACKABLE %s", spawn.NPCName))
 			}
+
+			if !slices.Contains(roleList, "General") {
+				roleList = append(roleList, "General")
+			}
+		default:
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_NPC_ROLE %s", spawn.NPCName))
 		}
 
 		for _, quest := range spawn.Quests {
@@ -233,6 +274,26 @@ func ValidateWorldData() []error {
 				}
 			}
 		}
+	}
+
+	itemLen := len(items)
+	if itemLen < 4 {
+		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INSUFFICIENT_ITEM_COUNT %d/4", itemLen))
+	}
+
+	obtainableItemsLen := len(obtainableItems)
+	if obtainableItemsLen < 2 {
+		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INSUFFICIENT_OBTAINABLE_ITEM_COUNT %d/2", obtainableItemsLen))
+	}
+
+	roleListLen := len(roleList)
+	if roleListLen < 3 {
+		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INSUFFICIENT_NPC_ROLE_COUNT %d/3", roleListLen))
+	}
+
+	questLen := len(questList)
+	if questLen < 2 {
+		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INSUFFICIENT_QUEST_COUNT %d/2", questLen))
 	}
 
 	return errs

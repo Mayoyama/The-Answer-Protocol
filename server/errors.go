@@ -44,9 +44,10 @@ var (
 
 // Command parsing errors.
 var (
-	InvalidCommandErr = ProtocolError{Code: 666, ErrorMessage: "INVALID_COMMAND"}
-	InvalidArgsErr    = ProtocolError{Code: 670, ErrorMessage: "INVALID_ARGS"}
-	MissingArgsErr    = ProtocolError{Code: 670, ErrorMessage: "MISSING_ARGS"}
+	InvalidCommandErr  = ProtocolError{Code: 666, ErrorMessage: "INVALID_COMMAND"}
+	CommandInCombatErr = ProtocolError{Code: 666, ErrorMessage: "COMMAND_NOT_AVAILABLE_IN_COMBAT"}
+	InvalidArgsErr     = ProtocolError{Code: 670, ErrorMessage: "INVALID_ARGS"}
+	MissingArgsErr     = ProtocolError{Code: 670, ErrorMessage: "MISSING_ARGS"}
 )
 
 // Rate-limit and ban errors.

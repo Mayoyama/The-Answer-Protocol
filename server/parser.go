@@ -38,13 +38,14 @@ type ParseItem struct {
 
 // ParseNPC is an NPC entry as read from world.yaml.
 type ParseNPC struct {
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Dialogue    []string `yaml:"dialogue"`
-	Role        string   `yaml:"role"`
-	Attackable  bool     `yaml:"attackable"`
-	Stats       NPCStats `yaml:"stats"`
-	Quests      []string `yaml:"quests"`
+	Name           string         `yaml:"name"`
+	Description    string         `yaml:"description"`
+	Dialogue       []string       `yaml:"dialogue"`
+	BattleDialogue BattleDialogue `yaml:"battle_dialogue"`
+	Role           string         `yaml:"role"`
+	Attackable     bool           `yaml:"attackable"`
+	Stats          NPCStats       `yaml:"stats"`
+	Quests         []string       `yaml:"quests"`
 }
 
 // ParseQuest is a quest entry as read from world.yaml.
@@ -231,14 +232,15 @@ func ParseYmlData(data []byte) error {
 		}
 
 		newNPC := NPC{
-			NPCID:       "npc." + key,
-			NPCName:     npc.Name,
-			Description: npc.Description,
-			Dialogue:    npc.Dialogue,
-			Quests:      questList,
-			Role:        npcRole,
-			Attackable:  npc.Attackable,
-			Stats:       npc.Stats,
+			NPCID:          "npc." + key,
+			NPCName:        npc.Name,
+			Description:    npc.Description,
+			Dialogue:       npc.Dialogue,
+			BattleDialogue: npc.BattleDialogue,
+			Quests:         questList,
+			Role:           npcRole,
+			Attackable:     npc.Attackable,
+			Stats:          npc.Stats,
 		}
 
 		npcs[key] = &newNPC

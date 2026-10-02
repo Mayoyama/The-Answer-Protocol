@@ -19,6 +19,22 @@ func handleInternalError(conn net.Conn, err error, loginState *LoginStatus, slog
 	_ = conn.Close()
 }
 
+// playerInBattle reports whether the player is in an ongoing battle; if so, it also sends them COMMAND_NOT_AVAILABLE_IN_COMBAT and logs it.
+func playerInBattle(conn net.Conn, command, pname string) bool {
+	OngoingBattlesMu.Lock()
+	_, inCombat := OngoingBattles[pname]
+	OngoingBattlesMu.Unlock()
+
+	if inCombat {
+		_, _ = fmt.Fprintln(conn, CommandInCombatErr.Error())
+		slog.Info(CommandInCombatErr.Error(), "player", pname, "command", command)
+
+		return true
+	}
+
+	return false
+}
+
 // commandDispatch routes a post-login command to its handler, after rate-limit checks.
 func commandDispatch(command, args string, loginState *LoginStatus, player *Player) {
 	pname := player.getPlayerName()
@@ -95,6 +111,10 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 
 			switch command {
 			case "MOVE":
+				if playerInBattle(player.Conn, command, pname) {
+					return
+				}
+
 				currLoc, err := handleMove(args, player)
 
 				switch err {
@@ -119,6 +139,10 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				groupFuncDispatcher(subparts[0], subargs, player)
 
 			case "TAKE":
+				if playerInBattle(player.Conn, command, pname) {
+					return
+				}
+
 				loc, err := player.itemTake(args)
 
 				switch err {
@@ -137,6 +161,10 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				}
 
 			case "DROP":
+				if playerInBattle(player.Conn, command, pname) {
+					return
+				}
+
 				loc, err := player.itemDrop(args)
 
 				switch err {
@@ -186,7 +214,30 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 					slog.Info(err.Error(), "player", pname, "command", command, "npc", args)
 				}
 
+			case "FLEE":
+				OngoingBattlesMu.Lock()
+				battleField, inCombat := OngoingBattles[pname]
+				OngoingBattlesMu.Unlock()
+
+				if !inCombat {
+					_, _ = fmt.Fprintln(player.Conn, InvalidCommandErr.Error())
+					slog.Info(InvalidCommandErr.Error(), "player", pname, "command", command)
+
+					return
+				}
+
+				ename := battleField.NPC.getNPCName()
+				terminateBattle(pname, battleField.NPC)
+				close(battleField.PlayerAttack)
+
+				_, _ = fmt.Fprintln(player.Conn, "OK battle ended")
+				slog.Info("SYS_MESSAGE", "player", pname, "message", "OK battle ended", "command", command, "npc", ename)
+
 			case "QUEST":
+				if playerInBattle(player.Conn, command, pname) {
+					return
+				}
+
 				err := checkNPCQuest(player, args)
 
 				switch err {
@@ -201,6 +252,10 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				}
 
 			case "ACCEPT":
+				if playerInBattle(player.Conn, command, pname) {
+					return
+				}
+
 				err := acceptQuest(player, args)
 
 				switch err {

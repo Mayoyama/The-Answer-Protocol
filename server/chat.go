@@ -14,10 +14,10 @@ func chatDispatcher(scope, message string, player *Player, loginState *LoginStat
 		onlinePlayersMu.Lock()
 		defer onlinePlayersMu.Unlock()
 
-		for _, p := range onlinePlayers {
-			if p.getPlayerName() != pname {
+		for wMem, p := range onlinePlayers {
+			if wMem != pname {
 				_, _ = fmt.Fprintln(p.Conn, EvtGlobalChat(pname, message))
-				slog.Info("SYS_MESSAGE", "player", pname, "message", EvtGlobalChat(pname, message), "command", "CHAT", "scope", scope)
+				slog.Info("SYS_MESSAGE", "player", pname, "recipient", wMem, "message", EvtGlobalChat(pname, message), "command", "CHAT", "scope", scope)
 			}
 		}
 
@@ -42,10 +42,10 @@ func chatDispatcher(scope, message string, player *Player, loginState *LoginStat
 		area.ZoneMu.Lock()
 		defer area.ZoneMu.Unlock()
 
-		for _, p := range area.InZone {
-			if p.getPlayerName() != pname {
+		for zMem, p := range area.InZone {
+			if zMem != pname {
 				_, _ = fmt.Fprintln(p.Conn, EvtZoneChat(pname, message))
-				slog.Info("SYS_MESSAGE", "player", pname, "message", EvtZoneChat(pname, message), "command", "CHAT", "scope", scope)
+				slog.Info("SYS_MESSAGE", "player", pname, "recipient", zMem, "message", EvtZoneChat(pname, message), "command", "CHAT", "scope", scope)
 			}
 		}
 
@@ -65,10 +65,10 @@ func chatDispatcher(scope, message string, player *Player, loginState *LoginStat
 		inGroup.GroupMu.Lock()
 		defer inGroup.GroupMu.Unlock()
 
-		for k, p := range inGroup.Members {
-			if k != pname {
+		for gMem, p := range inGroup.Members {
+			if gMem != pname {
 				_, _ = fmt.Fprintln(p.Conn, EvtPartyChat(pname, message))
-				slog.Info("SYS_MESSAGE", "player", pname, "message", EvtPartyChat(pname, message), "command", "CHAT", "scope", scope)
+				slog.Info("SYS_MESSAGE", "player", pname, "recipient", gMem, "message", EvtPartyChat(pname, message), "command", "CHAT", "scope", scope)
 			}
 		}
 
@@ -78,5 +78,20 @@ func chatDispatcher(scope, message string, player *Player, loginState *LoginStat
 	default:
 		_, _ = fmt.Fprintln(player.Conn, InvalidArgsErr.Error())
 		slog.Info(InvalidArgsErr.Error(), "player", pname, "command", "CHAT", "scope", scope)
+	}
+}
+
+func (n *NPC) announceBattleStartEnd(pname, message string) {
+	nName := n.getNPCName()
+	npcName := fmt.Sprintf("<<npc.%s>>", nName)
+
+	n.BaseLoc.ZoneMu.Lock()
+	defer n.BaseLoc.ZoneMu.Unlock()
+
+	for zMem, p := range n.BaseLoc.InZone {
+		if zMem != pname {
+			_, _ = fmt.Fprintln(p.Conn, EvtZoneChat(npcName, message))
+			slog.Info("SYS_MESSAGE", "NPC", nName, "recipient", zMem, "message", EvtZoneChat(npcName, message), "command", "CHAT", "scope", "ROOM")
+		}
 	}
 }

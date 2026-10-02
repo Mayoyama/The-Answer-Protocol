@@ -20,23 +20,25 @@ type NPCRole int
 const (
 	General NPCRole = iota
 	QuestGiver
+	Healer
 	Enemy
 )
 
 // NPC represents a non-player character in the world.
 type NPC struct {
-	NPCID       string
-	NPCName     string
-	Description string
-	Dialogue    []string
-	ChatIndex   int
-	Quests      map[string]*Quest
-	Role        NPCRole
-	Attackable  bool
-	Occupied    bool
-	Stats       NPCStats
-	BaseLoc     *Zone
-	NPCMu       sync.Mutex
+	NPCID          string
+	NPCName        string
+	Description    string
+	Dialogue       []string
+	BattleDialogue BattleDialogue
+	ChatIndex      int
+	Quests         map[string]*Quest
+	Role           NPCRole
+	Attackable     bool
+	Occupied       bool
+	Stats          NPCStats
+	BaseLoc        *Zone
+	NPCMu          sync.Mutex
 }
 
 type NPCStats struct {
@@ -44,6 +46,12 @@ type NPCStats struct {
 	Strength    int `yaml:"str"`
 	BattleSkill int `yaml:"battle_skill"`
 	Dexterity   int `yaml:"dex"`
+}
+
+type BattleDialogue struct {
+	BattleStart   string `yaml:"battle_start"`
+	PlayerVictory string `yaml:"player_victory"`
+	NPCVictory    string `yaml:"npc_victory"`
 }
 
 // resolveNPC finds an NPC by ID or name (case-insensitive).
