@@ -26,13 +26,12 @@ var (
 
 // Player represents a connected player and their in-game state.
 type Player struct {
-	Username    string
-	MaxHP       int
-	CurrHP      int
-	CurrLoc     string
-	Status      Status
-	BattleStats PlayerBattleStats
-
+	Username       string
+	MaxHP          int
+	CurrHP         int
+	CurrLoc        string
+	Status         Status
+	BattleStats    PlayerBattleStats
 	GroupInfo      *Group
 	Quests         map[string]*PlayerQuest
 	Inventory      map[string]bool
@@ -98,6 +97,17 @@ func (p *Player) setPlayerHPStatus() error {
 func (p *Player) cleanupPlayerData() {
 	inPT := p.getPlayerGroupInfo()
 	pname := p.getPlayerName()
+
+	OngoingBattlesMu.Lock()
+
+	battle, ok := OngoingBattles[pname]
+
+	if ok {
+		terminateBattle(pname, battle.NPC)
+		close(battle.PlayerAttack)
+	}
+
+	OngoingBattlesMu.Unlock()
 
 	if inPT != nil {
 		_ = inPT.groupLeave(p)

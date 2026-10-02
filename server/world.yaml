@@ -65,6 +65,10 @@ npcs:
     dialogue:
       - "What the hell do you want, runt?"
       - "Leave me be, scrawny runt..."
+    battle_dialogue:
+      battle_start: "I'll crush you like a bug!"
+      player_victory: "Pfft.. I went easy on you..."
+      npc_victory: "BWA-HA-HAA! Broken like a twig!"
     stats:
       hp: 90
       str: 7

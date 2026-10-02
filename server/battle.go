@@ -36,8 +36,27 @@ type RoundResult struct {
 	NPCHP          int
 }
 
+func terminateBattle(pname string, npc *NPC) {
+	ename := npc.getNPCName()
+
+	OngoingBattlesMu.Lock()
+	delete(OngoingBattles, pname)
+	OngoingBattlesMu.Unlock()
+
+	npc.NPCMu.Lock()
+	npc.Occupied = false
+	npc.NPCMu.Unlock()
+
+	endMessage := fmt.Sprintf("%s's battle with %s ended prematurely.", pname, ename)
+	npc.announceBattleStartEnd(pname, endMessage)
+}
+
 func resolveAttackRequest(target string, player *Player) error {
-	var battle *BattleField
+	var (
+		battle     *BattleField
+		endMessage string
+	)
+
 	pname := player.getPlayerName()
 	player.PlayerMu.Lock()
 	pMaxHP := player.MaxHP
@@ -93,6 +112,13 @@ func resolveAttackRequest(target string, player *Player) error {
 		player.Status = Engaged
 		player.PlayerMu.Unlock()
 
+		enemy.NPCMu.Lock()
+		battStart := enemy.BattleDialogue.BattleStart
+		enemy.NPCMu.Unlock()
+
+		startMessage := fmt.Sprintf("%s (%s commenced a new battle.)", battStart, pname)
+		enemy.announceBattleStartEnd("", startMessage)
+
 		battle = bf
 
 		go bf.processBattle()
@@ -124,9 +150,21 @@ func resolveAttackRequest(target string, player *Player) error {
 	_, _ = fmt.Fprintf(player.Conn, "OK %s\n", string(attackResponse))
 	slog.Info("SYS_MESSAGE", "player", pname, "message", string(attackResponse), "command", "ATTACK", "npc", battle.NPC.getNPCName())
 
+	battle.NPC.NPCMu.Lock()
+	playerWonString := battle.NPC.BattleDialogue.PlayerVictory
+	npcWonString := battle.NPC.BattleDialogue.NPCVictory
+	battle.NPC.NPCMu.Unlock()
+
 	if result.PlayerHP <= 0 {
+		endMessage = fmt.Sprintf("%s (%s lost the battle.)", npcWonString, pname)
+		battle.NPC.announceBattleStartEnd(pname, endMessage)
 		_, err := respawnPlayer(player)
+
 		return err
+
+	} else if result.NPCHP <= 0 {
+		endMessage = fmt.Sprintf("%s (%s won the battle.)", playerWonString, pname)
+		battle.NPC.announceBattleStartEnd("", endMessage)
 	}
 
 	return nil
@@ -215,7 +253,11 @@ func (bf *BattleField) processBattle() {
 	pname := bf.Player.getPlayerName()
 
 	for {
-		<-bf.PlayerAttack // wait until the "ATTACK" command
+		_, ok := <-bf.PlayerAttack // wait until the "ATTACK" command
+
+		if !ok {
+			return
+		}
 
 		var (
 			pDamageDealt   int
@@ -288,6 +330,7 @@ func (bf *BattleField) processBattle() {
 			OngoingBattlesMu.Unlock()
 
 			bf.Player.PlayerMu.Lock()
+
 			if bf.Player.CurrHP <= 0 {
 				bf.Player.CurrHP = bf.Player.MaxHP / 2
 			}
@@ -295,7 +338,6 @@ func (bf *BattleField) processBattle() {
 			bf.Player.PlayerMu.Unlock()
 
 			bf.Player.setPlayerHPStatus()
-
 			bf.BattleRoundResult <- roundRes
 
 			return
