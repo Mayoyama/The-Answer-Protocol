@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -20,6 +21,12 @@ const (
 	LoginFailed LoginStatus = iota
 	LoginOK
 	LoginClosed
+)
+
+var (
+	netConns     = make(map[net.Conn]struct{})
+	netConnsMu   sync.Mutex
+	shuttingDown bool
 )
 
 // processConn validates a username and registers the connecting player.
@@ -166,7 +173,12 @@ func handleLogin(conn net.Conn, command, args string, loginState *LoginStatus, p
 
 // handleTCPConn drives a single client connection from greeting through cleanup.
 func handleTCPConn(conn net.Conn) {
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		_ = conn.Close()
+		netConnsMu.Lock()
+		delete(netConns, conn)
+		netConnsMu.Unlock()
+	}()
 
 	_, _ = fmt.Fprintln(conn, "OK hello proto=1")
 	slog.Info("SYS_MESSAGE", "remote", conn.RemoteAddr().String(), "message", "OK hello proto=1")
