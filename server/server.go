@@ -127,6 +127,15 @@ func main() {
 			slog.Info("SYS_MESSAGE", "player", p.getPlayerName(), "message", ConnFailedErr.Error())
 			_ = p.Conn.Close()
 		}
+
+		netConnsMu.Lock()
+		shuttingDown = true
+
+		for c := range netConns {
+			_ = c.Close()
+		}
+
+		netConnsMu.Unlock()
 	}()
 
 	ticker := time.NewTicker(time.Minute)
@@ -185,6 +194,19 @@ func main() {
 			_ = conn.Close()
 			continue
 		}
+
+		netConnsMu.Lock()
+
+		if shuttingDown {
+			netConnsMu.Unlock()
+			_ = conn.Close()
+
+			continue
+		}
+
+		netConns[conn] = struct{}{}
+
+		netConnsMu.Unlock()
 
 		wg.Add(1)
 
