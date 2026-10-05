@@ -52,19 +52,40 @@ func processConn(conn net.Conn, args string, player **Player) (LoginStatus, erro
 	zonesMu.Unlock()
 
 	if !ok {
-		return LoginFailed, InternalErr
+		startZoneErr := fmt.Errorf("%w: INVALID_START_ZONE %s", InternalErr, startingZone)
+		return LoginFailed, startZoneErr
 	}
 
-	*player = newPlayer(username, startingZone, conn)
+	newP := newPlayer(username, startingZone, conn)
+
+	if newP.MaxHP <= 0 || newP.CurrHP != newP.MaxHP {
+		hpErr := fmt.Errorf("%w: INVALID_HP_VALUE(S) %d/%d", InternalErr, newP.CurrHP, newP.MaxHP)
+		return LoginFailed, hpErr
+	}
+
+	*player = newP
 
 	onlinePlayers[username] = *player
 
 	zones[startingZone].ZoneMu.Lock()
+
+	for k, p := range zones[startingZone].InZone {
+		_, _ = fmt.Fprintln(p.Conn, EvtZoneEnter(newP.Username))
+		slog.Info(EvtZoneEnter(newP.Username), "recipient", k, "loc", startingZone)
+	}
+
 	zones[startingZone].InZone[username] = *player
 	zones[startingZone].ZoneMu.Unlock()
 
 	slog.Info("PLAYER_CONNECTED", "remote", conn.RemoteAddr().String(), "player", (*player).Username, "args", args)
 	slog.Info(EvtZoneEnter((*player).Username), "loc", startingZone)
+
+	for k, p := range onlinePlayers {
+		if k != username {
+			_, _ = fmt.Fprintln(p.Conn, EvtPlayerCount(len(onlinePlayers)))
+			slog.Info("SYS_MESSAGE", "recipient", k, "message", EvtPlayerCount(len(onlinePlayers)), "reason", "player joined server")
+		}
+	}
 
 	return LoginOK, nil
 }
@@ -104,17 +125,25 @@ func handleLogin(conn net.Conn, command, args string, loginState *LoginStatus, p
 
 		result, err := processConn(conn, args, player)
 
+		if errors.Is(err, InternalErr) {
+			handleInternalError(conn, err, loginState,
+				slog.String("remote", conn.RemoteAddr().String()),
+			)
+
+			return
+		}
+
 		switch err {
 		case nil:
 			_, _ = fmt.Fprintln(conn, "OK connected")
 			slog.Info("SYS_MESSAGE", "player", (*player).Username, "message", "OK connected", "command", command)
 
-		case InternalErr:
-			handleInternalError(conn, InternalErr, loginState,
-				slog.String("reason", "Invalid starting location value"),
-			)
+			onlinePlayersMu.Lock()
+			onPlayerCount := len(onlinePlayers)
+			onlinePlayersMu.Unlock()
 
-			return
+			_, _ = fmt.Fprintln(conn, EvtPlayerCount(onPlayerCount))
+			slog.Info("SYS_MESSAGE", "recipient", (*player).Username, "message", EvtPlayerCount(onPlayerCount), "reason", "player joined server")
 
 		default:
 			_, _ = fmt.Fprintln(conn, err.Error())
@@ -156,7 +185,7 @@ func handleTCPConn(conn net.Conn) {
 	)
 
 	scantask := bufio.NewScanner(conn)
-	const idleTimeout = time.Minute * 5
+	const idleTimeout = time.Minute * 15
 
 	for {
 		if err := conn.SetReadDeadline(time.Now().Add(idleTimeout)); err != nil {
@@ -179,13 +208,13 @@ func handleTCPConn(conn net.Conn) {
 		}
 
 		if loginState == LoginOK {
-			commandDispatch(parts[0], args, &loginState, player)
+			commandDispatch(strings.ToUpper(parts[0]), args, &loginState, player)
 
 		} else if loginState == LoginClosed {
 			break
 
 		} else {
-			handleLogin(conn, parts[0], args, &loginState, &player, &lastTokenTick, &chanceCount)
+			handleLogin(conn, strings.ToUpper(parts[0]), args, &loginState, &player, &lastTokenTick, &chanceCount)
 		}
 	}
 

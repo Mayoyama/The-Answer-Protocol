@@ -9,9 +9,11 @@ import (
 )
 
 // items holds all loaded items, keyed by their world.yaml key.
+// keyItems holds all loaded key items, keyed by their world.yaml key.
 var (
-	items   = make(map[string]*Item)
-	itemsMu sync.Mutex
+	items    = make(map[string]*Item)
+	itemsMu  sync.Mutex
+	keyItems = make(map[string]*KeyItem)
 )
 
 // Item represents a pickable object in the world.
@@ -23,14 +25,33 @@ type Item struct {
 	BaseLoc     *Zone
 }
 
-// resolveItem finds an item by ID or name (case-insensitive).
+// KeyItem is a per-player quest item, kept separate from world items.
+type KeyItem struct {
+	ItemID      string
+	ItemName    string
+	Description string
+	SkillBoost  int
+}
+
+// resolveItem finds an item by ID, name or world.yaml key (case-insensitive).
 func resolveItem(input string) (*Item, bool) {
 	itemsMu.Lock()
 	defer itemsMu.Unlock()
 
-	for _, item := range items {
-		if strings.EqualFold(item.ItemID, input) || strings.EqualFold(item.ItemName, input) {
+	for k, item := range items {
+		if strings.EqualFold(item.ItemID, input) || strings.EqualFold(item.ItemName, input) || strings.EqualFold(k, input) {
 			return item, true
+		}
+	}
+
+	return nil, false
+}
+
+// resolveKeyItem finds a key item by ID, name or world.yaml key (case-insensitive).
+func resolveKeyItem(input string) (*KeyItem, bool) {
+	for k, ki := range keyItems {
+		if strings.EqualFold(ki.ItemID, input) || strings.EqualFold(ki.ItemName, input) || strings.EqualFold(k, input) {
+			return ki, true
 		}
 	}
 
@@ -69,16 +90,19 @@ func (p *Player) itemTake(itemName string) (string, error) {
 	}
 
 	currZone.ZoneMu.Lock()
+	defer currZone.ZoneMu.Unlock()
 
-	if _, ok := currZone.Items[i.ItemID]; !ok {
-		currZone.ZoneMu.Unlock()
+	_, exists := currZone.Items[i.ItemID]
+
+	if !exists {
 		return currLoc, ItemNotFoundErr
-
-	} else {
-		delete(currZone.Items, i.ItemID)
 	}
 
-	currZone.ZoneMu.Unlock()
+	if !i.Obtainable {
+		return currLoc, NotObtainableErr
+	}
+
+	delete(currZone.Items, i.ItemID)
 
 	p.addItem(i.ItemID)
 
@@ -128,23 +152,52 @@ func (p *Player) itemDrop(itemName string) (string, error) {
 func printInventory(player *Player, command, args string) {
 	player.PlayerMu.Lock()
 
+	pname := player.Username
+
 	bag := make([]string, 0, len(player.Inventory))
 
 	for item := range player.Inventory {
 		bag = append(bag, item)
 	}
 
-	sac, err := json.Marshal(bag)
-
 	player.PlayerMu.Unlock()
+
+	sac, err := json.Marshal(bag)
 
 	if err != nil {
 		_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
-		slog.Error(JSONErr.Error(), "player", player.getPlayerName(), "command", command, "args", args)
+		slog.Error(JSONErr.Error(), "player", pname, "command", command, "args", args)
 
 		return
 	}
 
 	_, _ = fmt.Fprintln(player.Conn, "OK", string(sac))
-	slog.Info("SYS_MESSAGE", "player", player.getPlayerName(), "message", "OK "+string(sac), "command", command)
+	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+string(sac), "command", command)
+}
+
+// printKIs sends the player's key items as a JSON response.
+func printKIs(player *Player, command, args string) {
+	player.PlayerMu.Lock()
+
+	pname := player.Username
+
+	kItems := make([]string, 0, len(player.KeyInventory))
+
+	for item := range player.KeyInventory {
+		kItems = append(kItems, item)
+	}
+
+	player.PlayerMu.Unlock()
+
+	sac, err := json.Marshal(kItems)
+
+	if err != nil {
+		_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
+		slog.Error(JSONErr.Error(), "player", pname, "command", command, "args", args)
+
+		return
+	}
+
+	_, _ = fmt.Fprintln(player.Conn, "OK", string(sac))
+	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+string(sac), "command", command)
 }

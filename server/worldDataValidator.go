@@ -7,13 +7,16 @@ import (
 	"strings"
 )
 
-// startingZone is the zone new players spawn into, and the root zone used for connectivity/cycle validation.
+// startingZone is the zone new players spawn into, and the root zone used for
+// connectivity/cycle validation.
+// respawnZone is where players respawn after losing a fight.
 const (
 	startingZone = "taverne"
 	respawnZone  = "chapel"
 )
 
-// validateMapConnectivity confirms every zone is reachable from startingZone via a breadth-first walk, returning an error if any zone is unreachable.
+// validateMapConnectivity confirms every zone is reachable from startingZone via a
+// breadth-first walk, returning an error if any zone is unreachable.
 func validateMapConnectivity() error {
 	var (
 		visited []string
@@ -44,7 +47,8 @@ func validateMapConnectivity() error {
 	return nil
 }
 
-// mapLooper recursively walks currentZone's exits, returning true if it reaches a zone already on the current path (onPath).
+// mapLooper recursively walks currentZone's exits, returning true if it reaches a zone
+// already on the current path (onPath).
 func mapLooper(currentZone string, onPath, fullyExplored *[]string) bool {
 	for _, z := range zones[currentZone].Exits {
 		if slices.Contains(*onPath, z) {
@@ -69,7 +73,8 @@ func mapLooper(currentZone string, onPath, fullyExplored *[]string) bool {
 	return false
 }
 
-// mapLoopExists reports whether the world's zone graph contains at least one cycle, walking from startingZone.
+// mapLoopExists reports whether the world's zone graph contains at least one cycle,
+// walking from startingZone.
 func mapLoopExists() bool {
 	var (
 		onPath        []string
@@ -81,17 +86,28 @@ func mapLoopExists() bool {
 	return mapLooper(startingZone, &onPath, &fullyExplored)
 }
 
-// ValidateWorldData checks zones, items, and NPCs (including their quests) for consistency, returning a list of errors.
+// ValidateWorldData checks zones, items, keyItems and NPCs (including their quests) for
+// consistency, returning a list of errors.
 func ValidateWorldData() []error {
 	var (
-		errs            []error
-		questList       []*Quest
-		existingItems   = make(map[string]string)
-		obtainableItems []string
-		roleList        []string
+		errs                 []error
+		questList            []*Quest
+		existingItems        = make(map[string]string)
+		obtainableItems      []string
+		ItemKIComparisonList []string
+		grantedKeyItems      = make(map[string]bool)
+		roleList             []string
 	)
 
-	if l := len(zones); l < 1 { // NEEDS TO BE 8
+	if _, startZoneOK := zones[startingZone]; !startZoneOK {
+		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_STARTING_ROOM %s", startingZone))
+	}
+
+	if _, respawnZoneOK := zones[respawnZone]; !respawnZoneOK {
+		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_RESPAWN_ROOM %s", respawnZone))
+	}
+
+	if l := len(zones); l < 8 {
 		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_ROOM_COUNT %d", l))
 	}
 
@@ -109,8 +125,8 @@ func ValidateWorldData() []error {
 		}
 
 		for dir, exit := range z.Exits {
-			if dir == "" || strings.TrimSpace(dir) == "" {
-				errs = append(errs, errors.New("VALIDATION_ERROR: INVALID_DIRECTION [nil]"))
+			if dir == InvalidDirection {
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_DIRECTION, ROOM: %s", z.ZoneName))
 			}
 
 			if exit == "" || strings.TrimSpace(exit) == "" {
@@ -133,12 +149,45 @@ func ValidateWorldData() []error {
 			if _, exists := existingItems[itemID]; !exists {
 				existingItems[itemID] = z.ZoneName
 
+				if slices.Contains(ItemKIComparisonList, strings.ToLower(obj.ItemName)) {
+					errs = append(errs, fmt.Errorf("VALIDATION_ERROR: DUPLICATE_ITEM_NAME %s, LOCATION: %s", strings.ToLower(obj.ItemName), z.ZoneName))
+
+				} else {
+					ItemKIComparisonList = append(ItemKIComparisonList, strings.ToLower(obj.ItemName))
+				}
+
 				if obj.Obtainable {
 					obtainableItems = append(obtainableItems, itemID)
 				}
 
 			} else {
-				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: DUPLICATE_ITEM %s, LOCATION: %s", itemID, z.ZoneName))
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: DUPLICATE_ITEM_ID %s, LOCATION: %s", itemID, z.ZoneName))
+			}
+		}
+	}
+
+	for _, n := range npcs {
+		for _, q := range n.Quests {
+			for _, action := range q.Steps {
+				step, isTTA := action.(*TalkToAction)
+
+				if !isTTA {
+					continue
+				}
+
+				for _, ki := range step.GrantsKeyItems {
+					gki, exists := resolveKeyItem(ki)
+
+					if exists {
+						grantedKeyItems[gki.ItemID] = true
+					}
+				}
+			}
+
+			if q.Reward != nil && q.Reward.KeyItem != "" {
+				if reward, ok := resolveKeyItem(q.Reward.KeyItem); ok {
+					grantedKeyItems[reward.ItemID] = true
+				}
 			}
 		}
 	}
@@ -216,6 +265,10 @@ func ValidateWorldData() []error {
 				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: HEALER_CANNOT_BE_ATTACKABLE %s", spawn.NPCName))
 			}
 
+			if spawn.HealDialogue == "" || strings.TrimSpace(spawn.HealDialogue) == "" {
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: NPC_HEALER_HEALING_DIALOGUE [nil] %s", spawn.NPCName))
+			}
+
 			if !slices.Contains(roleList, "Healer") {
 				roleList = append(roleList, "Healer")
 			}
@@ -246,11 +299,70 @@ func ValidateWorldData() []error {
 				questList = append(questList, quest)
 			}
 
+			if quest.Reward != nil && quest.Reward.KeyItem != "" {
+				_, exists := resolveKeyItem(quest.Reward.KeyItem)
+
+				if !exists {
+					errs = append(errs, fmt.Errorf("VALIDATION_ERROR: %s %s, QUEST: %s", ItemNotFoundErr.ErrorMessage, quest.Reward.KeyItem, quest.Name))
+				}
+			}
+
+			var sameQuestKeyItems []string
+
 			for _, action := range quest.Steps {
 				switch val := action.(type) {
 				case *TalkToAction:
-					if _, ok := npcs[val.Target]; !ok {
+					if n, ok := npcs[val.Target]; !ok {
 						errs = append(errs, fmt.Errorf("VALIDATION_ERROR: %s %s", NPCNotFoundErr.ErrorMessage, val.Target))
+
+					} else {
+						if n.Role == Healer {
+							errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_ROLE_FOR_QUEST_ACTION %s, ROLE: healer", val.Target))
+						}
+					}
+
+					if val.MissingItemsDialogue != "" && strings.TrimSpace(val.MissingItemsDialogue) == "" {
+						errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_MISSING_ITEMS_DIALOGUE [%s], QUEST: %s", val.MissingItemsDialogue, quest.Name))
+					}
+
+					for _, ki := range val.GrantsKeyItems {
+						gki, exists := resolveKeyItem(ki)
+
+						if !exists {
+							errs = append(errs, fmt.Errorf("VALIDATION_ERROR: %s %s", ItemNotFoundErr.ErrorMessage, ki))
+
+							continue
+						}
+
+						if slices.Contains(sameQuestKeyItems, gki.ItemID) {
+							errs = append(errs, fmt.Errorf("VALIDATION_ERROR: DUPLICATE_KEY_ITEM_FOUND %s", ki))
+
+						} else {
+							sameQuestKeyItems = append(sameQuestKeyItems, gki.ItemID)
+						}
+					}
+
+					for _, ki := range val.ReceivesKeyItems {
+						gki, exists := resolveKeyItem(ki)
+
+						if !exists {
+							errs = append(errs, fmt.Errorf("VALIDATION_ERROR: %s %s", ItemNotFoundErr.ErrorMessage, ki))
+
+							continue
+						}
+
+						resIdx := slices.Index(sameQuestKeyItems, gki.ItemID)
+
+						if resIdx == -1 {
+							_, found := grantedKeyItems[gki.ItemID]
+
+							if !found {
+								errs = append(errs, fmt.Errorf("VALIDATION_ERROR: MISSING_QUEST_KEY_ITEM %s, QUEST: %s", ki, quest.Name))
+							}
+
+						} else {
+							sameQuestKeyItems = slices.Delete(sameQuestKeyItems, resIdx, resIdx+1)
+						}
 					}
 
 				case *BattleAction:
@@ -263,16 +375,47 @@ func ValidateWorldData() []error {
 						}
 
 						if n.Role != Enemy {
-							errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_ROLE %s", val.Target))
+							errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_ROLE_FOR_BATTLE_ACTION %s, ROLE: %s", val.Target, n.getNPCRole()))
 						}
 					}
 
 				case *EnterAreaAction:
-					if _, ok := zones[val.Area]; !ok {
-						errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_ROOM_NAME %s", val.Area))
+					_, ok := zones[val.Area]
+
+					if !ok {
+						errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_ROOM_NAME_FOR_ENTER_AREA_ACTION %s", val.Area))
+					}
+
+					if val.Message == "" || strings.TrimSpace(val.Message) == "" {
+						errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_ENTER_AREA_ACTION_MESSAGE [nil], AREA: %s", val.Area))
 					}
 				}
 			}
+			if len(sameQuestKeyItems) > 0 {
+				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: QUEST_KEY_ITEMS_NOT_BALANCED %v, QUEST: %s", sameQuestKeyItems, quest.Name))
+			}
+		}
+	}
+
+	for k, ki := range keyItems {
+		if k == "" || ki.ItemName == "" || strings.TrimSpace(k) == "" || strings.TrimSpace(ki.ItemName) == "" {
+			errs = append(errs, errors.New("VALIDATION_ERROR: INVALID_KEY_ITEM_NAME [nil]"))
+		}
+
+		if ki.Description == "" || strings.TrimSpace(ki.Description) == "" {
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INVALID_KEY_ITEM_DESCRIPTION [nil] %s", ki.ItemName))
+		}
+
+		if ki.SkillBoost < 0 {
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: NEGATIVE_KEY_ITEM_SKILLBOOST %d, KEY_ITEM: %s", ki.SkillBoost, ki.ItemName))
+		}
+
+		iname := strings.ToLower(ki.ItemName)
+		if slices.Contains(ItemKIComparisonList, iname) {
+			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: DUPLICATE_ITEM_NAME %s", iname))
+
+		} else {
+			ItemKIComparisonList = append(ItemKIComparisonList, iname)
 		}
 	}
 

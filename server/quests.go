@@ -50,6 +50,8 @@ type PlayerQuest struct {
 	Status    QuestStatus
 }
 
+// printPlayerQuests sends the player's accepted quests (with progress and quest_items)
+// as a JSON response.
 func printPlayerQuests(player *Player) {
 	pname := player.getPlayerName()
 
@@ -72,17 +74,35 @@ func printPlayerQuests(player *Player) {
 		}
 
 		var (
-			progress string
-			newSumm  QuestSummary
+			progress       string
+			newSumm        QuestSummary
+			questItemCount string
 		)
 
 		if q.Status == Active {
 			progress = fmt.Sprintf("%d/%d", q.StepIndex, len(q.Quest.Steps))
 
+			step, isTTA := q.Quest.Steps[q.StepIndex].(*TalkToAction)
+
+			if isTTA && len(step.ReceivesKeyItems) > 0 {
+				alreadyHeld := 0
+
+				for _, ki := range step.ReceivesKeyItems {
+					keyItem, ok := resolveKeyItem(ki)
+
+					if ok && player.KeyInventory[keyItem.ItemID] {
+						alreadyHeld++
+					}
+				}
+
+				questItemCount = fmt.Sprintf("%d/%d", alreadyHeld, len(step.ReceivesKeyItems))
+			}
+
 			newSumm = QuestSummary{
-				QuestID:  q.Quest.QuestID,
-				Status:   statusString,
-				Progress: progress,
+				QuestID:    q.Quest.QuestID,
+				Status:     statusString,
+				Progress:   progress,
+				QuestItems: questItemCount,
 			}
 
 		} else {
@@ -192,6 +212,7 @@ func acceptQuest(player *Player, targetNPC string) error {
 	return nil
 }
 
+// completeQuest marks the quest completed and grants its gold, key item and skill boost.
 func (pq *PlayerQuest) completeQuest(player *Player) {
 	pname := player.getPlayerName()
 
@@ -208,8 +229,24 @@ func (pq *PlayerQuest) completeQuest(player *Player) {
 
 	} else {
 		if pq.Quest.Reward.KeyItem != "" {
-			player.KeyInventory = append(player.KeyInventory, pq.Quest.Reward.KeyItem)
-			msg = fmt.Sprintf("%s receives %s.", pname, pq.Quest.Reward.KeyItem)
+			i, ok := resolveKeyItem(pq.Quest.Reward.KeyItem)
+
+			if !ok {
+				msg = fmt.Sprintf("%s receives an imaginary key item.", pname)
+				slog.Warn(ItemNotFoundErr.Error(), "key_item", pq.Quest.Reward.KeyItem, "quest", pq.Quest.Name, "player", pname)
+
+			} else {
+				player.KeyInventory[i.ItemID] = true
+
+				if i.SkillBoost > 0 {
+					player.BattleStats.BattleSkill += i.SkillBoost
+
+					msg = fmt.Sprintf("%s receives %s.\nYou gain +%d BattleSkill", pname, i.ItemName, i.SkillBoost)
+
+				} else {
+					msg = fmt.Sprintf("%s receives %s.", pname, i.ItemName)
+				}
+			}
 
 			_, _ = fmt.Fprintln(player.Conn, msg)
 			slog.Info("SYS_MESSAGE", "player", pname, "message", msg, "command", "completeQuest")
@@ -236,7 +273,8 @@ type QuestAction interface {
 
 // EnterAreaAction is a quest step completed by entering the named zone.
 type EnterAreaAction struct {
-	Area string `yaml:"enter_area"`
+	Area    string `yaml:"enter_area"`
+	Message string `yaml:"message"`
 }
 
 // ActionType returns the step's discriminator key, "enter_area".
@@ -244,8 +282,11 @@ func (eaa *EnterAreaAction) ActionType() string { return "enter_area" }
 
 // TalkToAction is a quest step completed by talking to the named NPC.
 type TalkToAction struct {
-	Target   string `yaml:"talk_to"`
-	Dialogue string `yaml:"dialogue"`
+	Target               string   `yaml:"talk_to"`
+	Dialogue             string   `yaml:"dialogue"`
+	GrantsKeyItems       []string `yaml:"grants_key_items"`
+	ReceivesKeyItems     []string `yaml:"receives_key_items"`
+	MissingItemsDialogue string   `yaml:"missing_items_dialogue"`
 }
 
 // ActionType returns the step's discriminator key, "talk_to".

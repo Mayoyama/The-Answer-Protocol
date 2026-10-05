@@ -60,7 +60,7 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 		_, _ = fmt.Fprintln(player.Conn, AlreadyConnErr.Error())
 		slog.Info(AlreadyConnErr.Error(), "player", pname, "command", command, "args", args)
 
-	case "LOOK", "QUIT", "WHO", "STATUS", "INVENTORY", "QUESTS", "GOLD":
+	case "LOOK", "QUIT", "WHO", "STATUS", "INVENTORY", "KEYITEMS", "QUESTS", "GOLD", "FLEE":
 		if args != "" {
 			_, _ = fmt.Fprintln(player.Conn, InvalidArgsErr.Error())
 			slog.Info(InvalidArgsErr.Error(), "player", pname, "command", command, "args", nil)
@@ -87,15 +87,45 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 			case "INVENTORY":
 				printInventory(player, command, args)
 
+			case "KEYITEMS":
+				printKIs(player, command, args)
+
 			case "QUESTS":
 				printPlayerQuests(player)
 
 			case "GOLD":
 				printGoldBalance(player)
+
+			case "FLEE":
+				OngoingBattlesMu.Lock()
+				battleField, inCombat := OngoingBattles[pname]
+				OngoingBattlesMu.Unlock()
+
+				if !inCombat {
+					_, _ = fmt.Fprintln(player.Conn, InvalidCommandErr.Error())
+					slog.Info(InvalidCommandErr.Error(), "player", pname, "command", command)
+
+					return
+				}
+
+				ename := battleField.NPC.getNPCName()
+				terminateBattle(pname, battleField.NPC)
+				close(battleField.PlayerAttack)
+
+				if err := player.setPlayerHPStatus(); err != nil {
+					player.PlayerMu.Lock()
+					player.Status = Unknown
+					player.PlayerMu.Unlock()
+
+					slog.Warn(err.Error(), "player", pname, "command", command)
+				}
+
+				_, _ = fmt.Fprintln(player.Conn, "OK battle ended")
+				slog.Info("SYS_MESSAGE", "player", pname, "message", "OK battle ended", "command", command, "npc", ename)
 			}
 		}
 
-	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "FLEE", "QUEST", "ACCEPT":
+	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "QUEST", "ACCEPT", "EXAMINE":
 		if args == "" {
 			_, _ = fmt.Fprintln(player.Conn, MissingArgsErr.Error())
 			slog.Info(MissingArgsErr.Error(), "player", pname, "command", command, "args", args)
@@ -133,10 +163,10 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				}
 
 			case "CHAT":
-				chatDispatcher(subparts[0], subargs, player, loginState)
+				chatDispatcher(strings.ToUpper(subparts[0]), subargs, player, loginState)
 
 			case "GROUP":
-				groupFuncDispatcher(subparts[0], subargs, player)
+				groupFuncDispatcher(strings.ToUpper(subparts[0]), subargs, player)
 
 			case "TAKE":
 				if playerInBattle(player.Conn, command, pname) {
@@ -214,25 +244,6 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 					slog.Info(err.Error(), "player", pname, "command", command, "npc", args)
 				}
 
-			case "FLEE":
-				OngoingBattlesMu.Lock()
-				battleField, inCombat := OngoingBattles[pname]
-				OngoingBattlesMu.Unlock()
-
-				if !inCombat {
-					_, _ = fmt.Fprintln(player.Conn, InvalidCommandErr.Error())
-					slog.Info(InvalidCommandErr.Error(), "player", pname, "command", command)
-
-					return
-				}
-
-				ename := battleField.NPC.getNPCName()
-				terminateBattle(pname, battleField.NPC)
-				close(battleField.PlayerAttack)
-
-				_, _ = fmt.Fprintln(player.Conn, "OK battle ended")
-				slog.Info("SYS_MESSAGE", "player", pname, "message", "OK battle ended", "command", command, "npc", ename)
-
 			case "QUEST":
 				if playerInBattle(player.Conn, command, pname) {
 					return
@@ -267,6 +278,20 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				default:
 					_, _ = fmt.Fprintln(player.Conn, err.Error())
 					slog.Info(err.Error(), "player", pname, "command", command, "npc", args)
+				}
+
+			case "EXAMINE":
+				loc, err := examineDispatcher(strings.ToUpper(subparts[0]), subargs, player)
+
+				switch err {
+				case nil:
+				case JSONErr:
+					_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
+					slog.Error(JSONErr.Error(), "player", pname, "command", command, "args", args)
+
+				default:
+					_, _ = fmt.Fprintln(player.Conn, err.Error())
+					slog.Info(err.Error(), "player", pname, "command", command, "args", args, "loc", loc)
 				}
 			}
 		}

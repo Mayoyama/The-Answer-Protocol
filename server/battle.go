@@ -7,11 +7,13 @@ import (
 	"sync"
 )
 
+// OngoingBattles holds each player's active fight, keyed by player name.
 var (
 	OngoingBattles   = make(map[string]*BattleField)
 	OngoingBattlesMu sync.Mutex
 )
 
+// BattleField is the state of one player-vs-NPC fight, owned by its processBattle goroutine.
 type BattleField struct {
 	Player            *Player
 	NPC               *NPC
@@ -21,12 +23,14 @@ type BattleField struct {
 	BattleRoundResult chan RoundResult
 }
 
+// BattleRound is one side's attack in a round: initiative roll, damage and dodge.
 type BattleRound struct {
 	DamageOutput   int
 	InitiativeRoll int
 	DodgedAttack   bool
 }
 
+// RoundResult is a resolved round sent back to the attacking player.
 type RoundResult struct {
 	PlayerRound    BattleRound
 	NPCRound       BattleRound
@@ -36,6 +40,7 @@ type RoundResult struct {
 	NPCHP          int
 }
 
+// terminateBattle ends a player's fight early (FLEE or disconnect) and frees the NPC.
 func terminateBattle(pname string, npc *NPC) {
 	ename := npc.getNPCName()
 
@@ -51,6 +56,7 @@ func terminateBattle(pname string, npc *NPC) {
 	npc.announceBattleStartEnd(pname, endMessage)
 }
 
+// resolveAttackRequest starts or continues the player's fight and replies with the round result.
 func resolveAttackRequest(target string, player *Player) error {
 	var (
 		battle     *BattleField
@@ -165,11 +171,47 @@ func resolveAttackRequest(target string, player *Player) error {
 	} else if result.NPCHP <= 0 {
 		endMessage = fmt.Sprintf("%s (%s won the battle.)", playerWonString, pname)
 		battle.NPC.announceBattleStartEnd("", endMessage)
+
+		player.PlayerMu.Lock()
+
+		for _, pq := range player.Quests {
+			if pq.Status != Active {
+				continue
+			}
+
+			step, ok := pq.Quest.Steps[pq.StepIndex].(*BattleAction)
+
+			if !ok {
+				continue
+			}
+
+			npcsMu.Lock()
+			npc, found := npcs[step.Target]
+			npcsMu.Unlock()
+
+			if found && npc == battle.NPC {
+				pq.StepIndex++
+
+				questComplete := pq.StepIndex >= len(pq.Quest.Steps)
+
+				player.PlayerMu.Unlock()
+
+				if questComplete {
+					pq.completeQuest(player)
+				}
+
+				return nil
+
+			}
+		}
+
+		player.PlayerMu.Unlock()
 	}
 
 	return nil
 }
 
+// canBeFought reports whether the NPC is attackable and free, marking it occupied if so.
 func (enemy *NPC) canBeFought() error {
 
 	enemy.NPCMu.Lock()
@@ -186,6 +228,7 @@ func (enemy *NPC) canBeFought() error {
 	return NPCNotHostileErr
 }
 
+// calcBattleRound rolls initiative, damage and dodges for both sides of one round.
 func calcBattleRound(enemy *NPC, player *Player) (pBattleRound, npcBattleRound BattleRound) {
 	player.PlayerMu.Lock()
 	pDmgOutput := player.BattleStats.Strength + generateRandInt(1, player.BattleStats.BattleSkill)
@@ -232,6 +275,7 @@ func calcBattleRound(enemy *NPC, player *Player) (pBattleRound, npcBattleRound B
 	return pBattleRound, npcBattleRound
 }
 
+// calcDmgDealt returns the damage that lands, or 0 if the attack was dodged.
 func calcDmgDealt(damageOutput int, attackDodged bool) int {
 	if attackDodged {
 		return 0
@@ -240,6 +284,7 @@ func calcDmgDealt(damageOutput int, attackDodged bool) int {
 	return damageOutput
 }
 
+// applyDmgToPlayer subtracts damage from the player's HP and reports whether they were defeated.
 func (bf *BattleField) applyDmgToPlayer(damage int) (int, bool) {
 	bf.Player.PlayerMu.Lock()
 	defer bf.Player.PlayerMu.Unlock()
@@ -249,6 +294,7 @@ func (bf *BattleField) applyDmgToPlayer(damage int) (int, bool) {
 	return bf.Player.CurrHP, bf.Player.CurrHP <= 0
 }
 
+// processBattle runs a fight round by round until one side is defeated or the fight is terminated.
 func (bf *BattleField) processBattle() {
 	pname := bf.Player.getPlayerName()
 
@@ -332,12 +378,24 @@ func (bf *BattleField) processBattle() {
 			bf.Player.PlayerMu.Lock()
 
 			if bf.Player.CurrHP <= 0 {
-				bf.Player.CurrHP = bf.Player.MaxHP / 2
+				switch {
+				case bf.Player.MaxHP <= 0:
+					bf.Player.CurrHP = 0
+				default:
+					bf.Player.CurrHP = (bf.Player.MaxHP + 1) / 2
+				}
 			}
 
 			bf.Player.PlayerMu.Unlock()
 
-			bf.Player.setPlayerHPStatus()
+			if err := bf.Player.setPlayerHPStatus(); err != nil {
+				bf.Player.PlayerMu.Lock()
+				bf.Player.Status = Unknown
+				bf.Player.PlayerMu.Unlock()
+
+				slog.Warn(err.Error(), "player", pname, "command", "ATTACK")
+			}
+
 			bf.BattleRoundResult <- roundRes
 
 			return

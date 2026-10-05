@@ -10,10 +10,11 @@ import (
 
 // YmlData is the top-level structure of world.yaml.
 type YmlData struct {
-	World  World
-	Items  map[string]*ParseItem
-	NPCs   map[string]*ParseNPC
-	Quests map[string]*ParseQuest
+	World    World
+	Items    map[string]*ParseItem
+	KeyItems map[string]*ParseKeyItem `yaml:"key_items"`
+	NPCs     map[string]*ParseNPC
+	Quests   map[string]*ParseQuest
 }
 
 // World holds all locations defined in world.yaml.
@@ -37,12 +38,20 @@ type ParseItem struct {
 	Obtainable  bool   `yaml:"obtainable"`
 }
 
+// ParseKeyItem is a key item entry as read from world.yaml.
+type ParseKeyItem struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	SkillBoost  int    `yaml:"skill_boost"`
+}
+
 // ParseNPC is an NPC entry as read from world.yaml.
 type ParseNPC struct {
 	Name           string         `yaml:"name"`
 	Description    string         `yaml:"description"`
 	Dialogue       []string       `yaml:"dialogue"`
 	BattleDialogue BattleDialogue `yaml:"battle_dialogue"`
+	HealDialogue   string         `yaml:"heal_dialogue"`
 	Role           string         `yaml:"role"`
 	Attackable     bool           `yaml:"attackable"`
 	Stats          NPCStats       `yaml:"stats"`
@@ -64,7 +73,8 @@ type QuestStep struct {
 	Action QuestAction
 }
 
-// UnmarshalYAML decodes a quest step into the QuestAction matching its discriminator key (talk_to, enter_area, or battle).
+// UnmarshalYAML decodes a quest step into the QuestAction matching its discriminator key
+// (talk_to, enter_area, or battle).
 func (qs *QuestStep) UnmarshalYAML(value *yaml.Node) error {
 	var rawData map[string]any
 
@@ -107,7 +117,8 @@ func (qs *QuestStep) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// ParseYmlData loads world.yaml into the items, npcs, and zones maps, and builds Quest objects that get attached to the NPCs that offer them.
+// ParseYmlData loads world.yaml into the items, keyItems, npcs, and zones maps, and
+// builds Quest objects that get attached to the NPCs that offer them.
 func ParseYmlData(data []byte) error {
 	var worldData YmlData
 
@@ -130,6 +141,21 @@ func ParseYmlData(data []byte) error {
 		}
 
 		items[key] = &newitem
+	}
+
+	for key, ki := range worldData.KeyItems {
+		if key == "" || strings.TrimSpace(key) == "" {
+			return errors.New("PARSING_ERROR: INVALID_KEYITEM_KEY [nil]")
+		}
+
+		newKeyItem := KeyItem{
+			ItemID:      "key_item." + key,
+			ItemName:    ki.Name,
+			Description: ki.Description,
+			SkillBoost:  ki.SkillBoost,
+		}
+
+		keyItems[key] = &newKeyItem
 	}
 
 	var questObjList = make(map[string]*Quest)
@@ -241,6 +267,7 @@ func ParseYmlData(data []byte) error {
 			Description:    npc.Description,
 			Dialogue:       npc.Dialogue,
 			BattleDialogue: npc.BattleDialogue,
+			HealDialogue:   npc.HealDialogue,
 			Quests:         questList,
 			Role:           npcRole,
 			Attackable:     npc.Attackable,
@@ -255,11 +282,27 @@ func ParseYmlData(data []byte) error {
 			return errors.New("PARSING_ERROR: INVALID_LOCATION_KEY [nil]")
 		}
 
+		var exitMap = make(map[ZoneMoveDirection]string)
+
+		for dir, zName := range zone.Exits {
+			moveDir, ok := parseDirection(dir)
+
+			if !ok {
+				return fmt.Errorf("PARSING_ERROR: INVALID_MOVEMENT_DIRECTION %s, ROOM: %s", dir, key)
+			}
+
+			if _, exists := exitMap[moveDir]; exists {
+				return fmt.Errorf("PARSING_ERROR: DUPLICATE_MOVEMENT_DIRECTION %s, ROOM: %s", dir, key)
+			}
+
+			exitMap[moveDir] = zName
+		}
+
 		newLoc := Zone{
 			ZoneID:      "zone." + key,
 			ZoneName:    zone.Name,
 			Description: zone.Description,
-			Exits:       zone.Exits,
+			Exits:       exitMap,
 			InZone:      make(map[string]*Player),
 			Items:       make(map[string]*Item),
 			NPCs:        make(map[string]*NPC),
@@ -278,7 +321,7 @@ func ParseYmlData(data []byte) error {
 		}
 
 		for _, npc := range zone.Spawns {
-			n, ok := resolveNPC(npc)
+			n, ok := npcs[npc]
 			if !ok {
 				return fmt.Errorf("PARSING_ERROR: %s %s, LOCATION: %s", NPCNotFoundErr.ErrorMessage, npc, newLoc.ZoneID)
 			}
