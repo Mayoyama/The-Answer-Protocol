@@ -10,6 +10,7 @@ import (
 
 // softbannedPlayers holds soft-banned hosts and when their ban expires.
 // spammingIPConns tracks recent connection timestamps per host, for flood detection.
+// recheckSoftbanCh signals the softban cleaner to recheck the list.
 var (
 	softbannedPlayers   = make(map[string]time.Time)
 	softbannedPlayersMu sync.Mutex

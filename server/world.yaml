@@ -119,10 +119,11 @@ world:
       spawns:
         - barbarian
 
+
 items:
   tankard:
     name: Dented Tankard
-    description: A well-used tankard, still smells faintly of ale.
+    description: A well-used tankard. Smells of dark ale.
     obtainable: true
 
   old_lute:
@@ -215,6 +216,7 @@ items:
     description: A small wild flower with pale yellow petals.
     obtainable: true
 
+
 npcs:
   george:
     name: George
@@ -288,7 +290,9 @@ npcs:
     stats:
       hp: 86
     attackable: false
-    role: general
+    role: quest giver
+    quests:
+    - "arms_dealer"
 
   hilde:
     name: Hilde
@@ -337,6 +341,7 @@ npcs:
     attackable: true
     role: enemy
 
+
 quests:
   bread_for_kassandra:
     name: A loaf for the needy
@@ -345,11 +350,15 @@ quests:
     requires: ""
     steps:
       - talk_to: george
-        dialogue: "Hey there! Boy am I glad you're here. Be a champ and take this 'keyitem.Loaf' to Kassandra. Thanks!"
+        dialogue: "Hey there! Be a champ and take this [keyitem.Loaf] to Kassandra for me, would you? Thanks!"
+        grants_key_items:
+          - "key_item.bread_loaf"
       - talk_to: kassandra
         dialogue: "What's this, a loaf of bread? So George thinks to woo me with crumbs... (looks into your eyes...) Ah, so you're the one... This found its way to me this morning but now it has found its true owner."
+        receives_key_items:
+          - "key_item.bread_loaf"
     reward:
-      key_item: "rusty_dagger"
+      key_item: "key_item.rusty_dagger"
 
   something_in_the_well:
     name: Something in the Well
@@ -365,7 +374,7 @@ quests:
       - talk_to: "kassandra"
         dialogue: "Only a bat... Pity. I'd hoped for something more. (Kassandra hands you something) The pieces are coming together..."
     reward:
-      key_item: "small_gem" 
+      key_item: "key_item.small_gem" 
       gold: 20
 
   a_lesson_in_manners:
@@ -381,3 +390,39 @@ quests:
         dialogue: "Oh, you taught that oaf a lesson? Can't thank you enough. Here, take this, and the next turnip's on me."
     reward:
       gold: 10 
+
+  arms_dealer:
+    name: Arms Dealer
+    description: Brannoc can mend any blade. He'll also tell you about his arms, at length, whether you ask or not.
+    type: fetch
+    requires: ""
+    steps:
+      - talk_to: brannoc
+        dialogue: "Come for your daily viewing of these impeccable biceps, have you? (laughs) Well, if you have a blade in need of mending, bring me the materials and I'll show you what these bad boys can really do. (flexes)"
+      - talk_to: brannoc
+        receives_key_items:
+          - "key_item.rusty_dagger"
+          - "key_item.small_gem"
+        missing_items_dialogue: "Back again without anything to fix? Well, I suppose I can't blame you for wanting another look. (wink)"
+        dialogue: "Right, stand back. (works the blade at the forge, muscles rippling with each hammer swing) Done! Not bad, eh?"
+    reward:
+      key_item: "key_item.ornate_dagger"
+
+
+key_items:
+  bread_loaf:
+    name: Loaf of Bread
+    description: A loaf of bread, apparently. So hard it would make a respectable bludgeoning weapon.
+
+  rusty_dagger:
+    name: Rusty Dagger
+    description: A once-beloved dagger, long separated from its owner. It seems to be missing a gem from its hilt.
+
+  small_gem:
+    name: Small Gem
+    description: A small, iridescent gem. It stirs a warm, oddly familiar sensation when held.
+
+  ornate_dagger:
+    name: Ornate Dagger
+    description: Beautifully restored, its gem glistens with a familiar warmth. It fits perfectly in your hand. EFFECT [BattleSkill +2].
+    skill_boost: 2

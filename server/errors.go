@@ -27,12 +27,13 @@ var NoExitErr = ProtocolError{Code: 301, ErrorMessage: "NO_EXIT"}
 // Group errors.
 var (
 	NotInGroupErr = ProtocolError{Code: 401, ErrorMessage: "NOT_IN_GROUP"}
+	NotLeaderErr  = ProtocolError{Code: 401, ErrorMessage: "NOT_GROUP_LEADER"}
 	InGroupErr    = ProtocolError{Code: 402, ErrorMessage: "ALREADY_IN_GROUP"}
-	NotLeaderErr  = ProtocolError{Code: 403, ErrorMessage: "NOT_GROUP_LEADER"}
 )
 
 // Not-found errors.
 var (
+	NotObtainableErr  = ProtocolError{Code: 403, ErrorMessage: "ITEM_NOT_OBTAINABLE"}
 	ItemNotFoundErr   = ProtocolError{Code: 404, ErrorMessage: "ITEM_NOT_FOUND"}
 	NotInInvErr       = ProtocolError{Code: 404, ErrorMessage: "ITEM_NOT_IN_INVENTORY"}
 	NPCNotFoundErr    = ProtocolError{Code: 404, ErrorMessage: "NPC_NOT_FOUND"}

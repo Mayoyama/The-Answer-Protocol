@@ -48,9 +48,10 @@ type QuestResponse struct {
 
 // QuestSummary is the condensed quest info listed in QuestsResponse.
 type QuestSummary struct {
-	QuestID  string `json:"quest_id"`
-	Status   string `json:"status"`
-	Progress string `json:"progress,omitempty"`
+	QuestID    string `json:"quest_id"`
+	Status     string `json:"status"`
+	Progress   string `json:"progress,omitempty"`
+	QuestItems string `json:"quest_items,omitempty"`
 }
 
 // WhoResponse is the JSON payload for the WHO command.
@@ -64,3 +65,9 @@ type QuestsResponse []QuestSummary
 
 // InventoryResponse is the JSON payload for the INVENTORY command.
 type InventoryResponse []string
+
+// ExamineResponse is the JSON payload for the EXAMINE command.
+type ExamineResponse struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}

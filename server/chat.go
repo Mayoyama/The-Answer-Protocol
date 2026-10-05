@@ -81,6 +81,7 @@ func chatDispatcher(scope, message string, player *Player, loginState *LoginStat
 	}
 }
 
+// announceBattleStartEnd sends a fight start/end message as the NPC to its room, skipping pname ("" = everyone).
 func (n *NPC) announceBattleStartEnd(pname, message string) {
 	nName := n.getNPCName()
 	npcName := fmt.Sprintf("<<npc.%s>>", nName)

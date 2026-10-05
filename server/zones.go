@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 )
 
@@ -13,16 +14,72 @@ var (
 	zonesMu sync.Mutex
 )
 
+// ZoneMoveDirection is one of the six movement directions.
+type ZoneMoveDirection int
+
+// Direction values; InvalidDirection is the zero value.
+const (
+	InvalidDirection ZoneMoveDirection = iota
+	Up
+	Down
+	North
+	East
+	South
+	West
+)
+
 // Zone represents a location in the world.
 type Zone struct {
 	ZoneID      string
 	ZoneName    string
 	Description string
-	Exits       map[string]string
+	Exits       map[ZoneMoveDirection]string
 	InZone      map[string]*Player
 	Items       map[string]*Item
 	NPCs        map[string]*NPC
 	ZoneMu      sync.Mutex
+}
+
+// parseDirection converts a direction word to its enum (case-insensitive).
+func parseDirection(direction string) (ZoneMoveDirection, bool) {
+	direction = strings.ToLower(direction)
+
+	switch direction {
+	case "up":
+		return Up, true
+	case "down":
+		return Down, true
+	case "north":
+		return North, true
+	case "east":
+		return East, true
+	case "south":
+		return South, true
+	case "west":
+		return West, true
+	default:
+		return InvalidDirection, false
+	}
+}
+
+// String returns the direction's lowercase name.
+func (d ZoneMoveDirection) String() string {
+	switch d {
+	case Up:
+		return "up"
+	case Down:
+		return "down"
+	case North:
+		return "north"
+	case East:
+		return "east"
+	case South:
+		return "south"
+	case West:
+		return "west"
+	default:
+		return "unknown"
+	}
 }
 
 // handleWho sends the player a JSON count of players in their room and on the server.
@@ -101,11 +158,18 @@ func handleLook(player *Player, loginState *LoginStatus) {
 	}
 
 	area.ZoneMu.Lock()
+
+	var exits = make(map[string]string)
+
+	for dir, target := range area.Exits {
+		exits[dir.String()] = target
+	}
+
 	roomInfo := RoomInfo{
 		RoomID:      area.ZoneID,
 		Name:        area.ZoneName,
 		Description: area.Description,
-		Exits:       area.Exits,
+		Exits:       exits,
 	}
 
 	var players []string
@@ -144,8 +208,8 @@ func handleLook(player *Player, loginState *LoginStatus) {
 	slog.Info("SYS_MESSAGE", "player", pname, "message", string(info), "command", "LOOK")
 }
 
+// shiftZone moves the player between zones, sending leave/enter events, and returns the new zone ID.
 func shiftZone(player *Player, pname, newLoc string, fromZone, newZone *Zone) string {
-
 	fromZone.ZoneMu.Lock()
 	delete(fromZone.InZone, pname)
 
@@ -164,10 +228,10 @@ func shiftZone(player *Player, pname, newLoc string, fromZone, newZone *Zone) st
 	newZoneID := newZone.ZoneID
 	newZone.InZone[pname] = player
 
-	for _, p := range newZone.InZone {
+	for k, p := range newZone.InZone {
 		if p != player {
 			_, _ = fmt.Fprintln(p.Conn, EvtZoneEnter(pname))
-			slog.Info(EvtZoneEnter(pname), "loc", newZone.ZoneName)
+			slog.Info(EvtZoneEnter(pname), "recipient", k, "loc", newZone.ZoneName)
 		}
 	}
 
@@ -179,16 +243,23 @@ func shiftZone(player *Player, pname, newLoc string, fromZone, newZone *Zone) st
 // handleMove moves the player through an exit to an adjacent zone.
 func handleMove(direction string, player *Player) (string, error) {
 	pname := player.getPlayerName()
-	currLoc := player.getZoneID()
 
+	currLoc := player.getZoneID()
 	zone, ok := getZoneObj(currLoc)
 
 	if !ok {
 		return currLoc, InternalErr
 	}
 
+	direction = strings.ToLower(direction)
+	moveDir, ok := parseDirection(direction)
+
+	if !ok {
+		return currLoc, NoExitErr
+	}
+
 	zone.ZoneMu.Lock()
-	newLoc, ok := zone.Exits[direction]
+	newLoc, ok := zone.Exits[moveDir]
 	zone.ZoneMu.Unlock()
 
 	if !ok {
@@ -206,9 +277,42 @@ func handleMove(direction string, player *Player) (string, error) {
 	_, _ = fmt.Fprintln(player.Conn, "OK room="+newZoneID)
 	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK room="+newZoneID, "command", "MOVE", "prev_loc", currLoc)
 
+	player.PlayerMu.Lock()
+
+	for _, pq := range player.Quests {
+		if pq.Status != Active {
+			continue
+		}
+
+		step, ok := pq.Quest.Steps[pq.StepIndex].(*EnterAreaAction)
+
+		if !ok {
+			continue
+		}
+
+		if newLoc == step.Area {
+			_, _ = fmt.Fprintln(player.Conn, step.Message)
+			slog.Info("SYS_MESSAGE", "player", pname, "message", step.Message, "action", "EnterAreaAction", "loc", newLoc)
+
+			pq.StepIndex++
+			questComplete := pq.StepIndex >= len(pq.Quest.Steps)
+
+			player.PlayerMu.Unlock()
+
+			if questComplete {
+				pq.completeQuest(player)
+			}
+
+			return "", nil
+		}
+	}
+
+	player.PlayerMu.Unlock()
+
 	return "", nil
 }
 
+// respawnPlayer moves a defeated player to respawnZone and sends EVT RESPAWN.
 func respawnPlayer(player *Player) (string, error) {
 	pname := player.getPlayerName()
 	currLoc := player.getZoneID()

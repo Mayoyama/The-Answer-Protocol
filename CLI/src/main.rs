@@ -1,3 +1,4 @@
+//! TAP CLI client: connects to the server, logs in, and relays stdin and server lines until disconnect.
 use crate::Event::{ConnErr, CtrlC, CtrlD, ServerInput, UserInput};
 use anyhow::{Context, Result, bail};
 use ctrlc::set_handler;
@@ -15,6 +16,7 @@ use std::{
     net::TcpStream,
 };
 
+/// Where the client is in the login handshake; input typed before login is queued until it completes.
 #[derive(PartialEq, Clone, Copy)]
 enum LoginState {
     TCPWaiting,
@@ -23,6 +25,7 @@ enum LoginState {
     LoggedIn,
 }
 
+/// Messages sent to the main loop by the reader threads and the Ctrl+C handler.
 enum Event {
     UserInput(String),
     ServerInput(String),
@@ -31,6 +34,7 @@ enum Event {
     CtrlD,
 }
 
+/// Connection state: the server writer, login progress, input queued before login, and a pending Ctrl+D.
 struct Login {
     tap_writer: TcpStream,
     login_state: LoginState,
@@ -39,6 +43,7 @@ struct Login {
 }
 
 impl Login {
+    /// Sends CONNECT <username> and waits for the server's reply.
     fn handle_login(&mut self, input: &str) -> Result<()> {
         let trimmed_input = input.trim_end();
 
@@ -50,6 +55,7 @@ impl Login {
         Ok(())
     }
 
+    /// Sends QUIT to the server, giving the write at most \duration`.`
     fn handle_quit(&mut self, duration: Duration) -> Result<()> {
         self.tap_writer
             .set_write_timeout(Some(duration))
@@ -60,6 +66,7 @@ impl Login {
         Ok(())
     }
 
+    /// Sends all input queued during login to the server, in order.
     fn clear_stdin_gate(&mut self) -> Result<()> {
         for item in self.stdin_gate_line.drain(..) {
             writeln!(self.tap_writer, "{}", item.trim_end())
@@ -70,12 +77,14 @@ impl Login {
     }
 }
 
+/// Runs the client and prints any error it ends with.
 fn main() {
     if let Err(err) = run() {
         println!("{err:#}");
     }
 }
 
+/// Connects to the server, starts the server and stdin reader threads, and handles events until the player quits or the connection is lost.
 fn run() -> Result<()> {
     let (user_input, event_recv) = channel::<Event>();
     let server_responses = user_input.clone();

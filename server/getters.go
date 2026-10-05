@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // getZoneObj looks up a zone by its ID.
 func getZoneObj(loc string) (*Zone, bool) {
 	zonesMu.Lock()
@@ -12,19 +14,33 @@ func getZoneObj(loc string) (*Zone, bool) {
 // getZoneID returns the player's current zone ID.
 func (p *Player) getZoneID() string {
 	p.PlayerMu.Lock()
-	loc := p.CurrLoc
-	p.PlayerMu.Unlock()
+	defer p.PlayerMu.Unlock()
 
-	return loc
+	return p.CurrLoc
 }
 
 // getPlayerName returns the player's username.
 func (p *Player) getPlayerName() string {
 	p.PlayerMu.Lock()
-	name := p.Username
-	p.PlayerMu.Unlock()
+	defer p.PlayerMu.Unlock()
 
-	return name
+	return p.Username
+}
+
+// getPlayerHP returns the player's current HP.
+func (p *Player) getPlayerHP() int {
+	p.PlayerMu.Lock()
+	defer p.PlayerMu.Unlock()
+
+	return p.CurrHP
+}
+
+// getPlayerMaxHP returns the player's max HP.
+func (p *Player) getPlayerMaxHP() int {
+	p.PlayerMu.Lock()
+	defer p.PlayerMu.Unlock()
+
+	return p.MaxHP
 }
 
 // getPlayerStatus returns the player's status as a lowercase string for responses.
@@ -49,10 +65,9 @@ func getPlayerStatus(player *Player) string {
 // getPlayerGroupInfo returns the group the player belongs to, or nil.
 func (p *Player) getPlayerGroupInfo() *Group {
 	p.PlayerMu.Lock()
-	inPT := p.GroupInfo
-	p.PlayerMu.Unlock()
+	defer p.PlayerMu.Unlock()
 
-	return inPT
+	return p.GroupInfo
 }
 
 // getNPCObject resolves an NPC by name and confirms it's present in this zone.
@@ -76,18 +91,45 @@ func (z *Zone) getNPCObject(name string) (*NPC, bool) {
 // getNPCName returns the NPC's display name.
 func (n *NPC) getNPCName() string {
 	n.NPCMu.Lock()
-	sname := n.NPCName
-	n.NPCMu.Unlock()
+	defer n.NPCMu.Unlock()
 
-	return sname
+	return n.NPCName
 }
 
-func (n *NPC) getNPCStats() NPCStats {
+// getNPCRole returns the NPC's role as a string for responses and logs.
+func (n *NPC) getNPCRole() string {
 	n.NPCMu.Lock()
-	npcStats := n.Stats
+	defer n.NPCMu.Unlock()
+	switch n.Role {
+	case General:
+		return "general"
+	case QuestGiver:
+		return "questGiver"
+	case Healer:
+		return "healer"
+	case Enemy:
+		return "enemy"
+	default:
+		return "unknownNPCRole"
+	}
+}
+
+// getNPCHealerString returns the healer's heal line with the "(You feel a warm glow)" suffix.
+func (n *NPC) getNPCHealerString() string {
+	const warmGlowString = "You feel a warm glow"
+	n.NPCMu.Lock()
+	baseHealString := n.HealDialogue
 	n.NPCMu.Unlock()
 
-	return npcStats
+	return fmt.Sprintf("%s (%s)", baseHealString, warmGlowString)
+}
+
+// getNPCStats returns a copy of the NPC's stats.
+func (n *NPC) getNPCStats() NPCStats {
+	n.NPCMu.Lock()
+	defer n.NPCMu.Unlock()
+
+	return n.Stats
 }
 
 // getNPCQuest returns the first quest this NPC can currently offer the player — skipping quests

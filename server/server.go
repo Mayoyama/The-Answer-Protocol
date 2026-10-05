@@ -79,19 +79,19 @@ func main() {
 		slog.Info("WORLD_DATA_VALIDATED")
 	}
 
-	//if err := validateMapConnectivity(); err != nil {
-	//	slog.Error(InternalErr.Error(), "err", err)
-	//	os.Exit(1)
-	//} else {
-	//	slog.Info("MAP_CONNECTIVITY_VALIDATED")
-	//}
+	if err := validateMapConnectivity(); err != nil {
+		slog.Error(InternalErr.Error(), "err", err)
+		os.Exit(1)
+	} else {
+		slog.Info("MAP_CONNECTIVITY_VALIDATED")
+	}
 
-	//if ok := mapLoopExists(); !ok {
-	//	slog.Error(InternalErr.Error(), "err", "NO_MAP_LOOP_DETECTED")
-	//	os.Exit(1)
-	//}else {
-	//	slog.Info("MAP_LOOP_VALIDATED")
-	//}
+	if ok := mapLoopExists(); !ok {
+		slog.Error(InternalErr.Error(), "err", "NO_MAP_LOOP_DETECTED")
+		os.Exit(1)
+	} else {
+		slog.Info("MAP_LOOP_VALIDATED")
+	}
 
 	listener, err := net.Listen("tcp", ":4242")
 
