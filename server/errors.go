@@ -53,6 +53,7 @@ var (
 
 // Rate-limit and ban errors.
 var (
+	InputSpamWarn = ProtocolError{Code: 747, ErrorMessage: "EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING"}
 	InputSpamErr  = ProtocolError{Code: 750, ErrorMessage: "EXCESSIVE_INPUT_DETECTED: TIMEOUT_APPLIED"}
 	SoftbannedErr = ProtocolError{Code: 760, ErrorMessage: "SOFTBANNED_FROM_SERVER"}
 )

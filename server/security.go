@@ -51,8 +51,43 @@ func (p *Player) handleTimeoutBucket(timestamp time.Time) bool {
 		return true
 	}
 
-	p.TimeoutEnd = timestamp.Add(5 * time.Minute)
+	p.TimeoutEnd = timestamp.Add(time.Minute)
 	p.TimeoutActions = 0
+
+	return false
+}
+
+func (p *Player) handleQueryBucket(timestamp time.Time) bool {
+	const queryRefill = 1
+	const queryMaxCapacity = 8
+
+	p.PlayerMu.Lock()
+	defer p.PlayerMu.Unlock()
+
+	timeElapsed := timestamp.Sub(p.QCBucketTS).Seconds()
+	tokensToAdd := timeElapsed * queryRefill
+	p.QueryCount = min(p.QueryCount+tokensToAdd, queryMaxCapacity)
+	p.QCBucketTS = timestamp
+
+	if p.QueryCount >= 1 {
+		p.QueryCount -= 1
+		return true
+	}
+
+	if timestamp.After(p.RejectionTS.Add(time.Second * 10)) {
+		p.RejectionTS = time.Now()
+		p.RejectionCount = 1
+	} else {
+		p.RejectionCount++
+	}
+
+	if p.RejectionCount >= 20 {
+		p.TimeoutEnd = timestamp.Add(time.Minute)
+		p.TimeoutActions = 0
+		p.RejectionCount = 1
+
+		slog.Warn("SYS_MESSAGE", "remote", p.Conn.RemoteAddr().String(), "player", p.Username, "message", InputSpamErr.Error(), "reason", "query bucket flooding")
+	}
 
 	return false
 }
