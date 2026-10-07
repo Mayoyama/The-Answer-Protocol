@@ -70,9 +70,24 @@ func processConn(conn net.Conn, args string, player **Player) (LoginStatus, erro
 		return LoginFailed, hpErr
 	}
 
+	_, writeErr := fmt.Fprintln(conn, "OK connected")
+
+	if writeErr != nil {
+		connErr := fmt.Errorf("%w: OK_CONNECTED_WRITE_FAILURE %v", InternalErr, writeErr)
+
+		return LoginFailed, connErr
+	}
+
+	slog.Info("SYS_MESSAGE", "player", username, "message", "OK connected", "command", "CONNECT")
+
 	*player = newP
 
 	onlinePlayers[username] = *player
+
+	onPlayerCount := len(onlinePlayers)
+
+	_, _ = fmt.Fprintln(conn, EvtPlayerCount(onPlayerCount))
+	slog.Info("SYS_MESSAGE", "recipient", username, "message", EvtPlayerCount(onPlayerCount), "reason", "player joined server")
 
 	zones[startingZone].ZoneMu.Lock()
 
@@ -84,8 +99,8 @@ func processConn(conn net.Conn, args string, player **Player) (LoginStatus, erro
 	zones[startingZone].InZone[username] = *player
 	zones[startingZone].ZoneMu.Unlock()
 
-	slog.Info("PLAYER_CONNECTED", "remote", conn.RemoteAddr().String(), "player", (*player).Username, "args", args)
-	slog.Info(EvtZoneEnter((*player).Username), "loc", startingZone)
+	slog.Info("PLAYER_CONNECTED", "remote", conn.RemoteAddr().String(), "player", username, "args", args)
+	slog.Info(EvtZoneEnter(username), "loc", startingZone)
 
 	for k, p := range onlinePlayers {
 		if k != username {
@@ -140,19 +155,7 @@ func handleLogin(conn net.Conn, command, args string, loginState *LoginStatus, p
 			return
 		}
 
-		switch err {
-		case nil:
-			_, _ = fmt.Fprintln(conn, "OK connected")
-			slog.Info("SYS_MESSAGE", "player", (*player).Username, "message", "OK connected", "command", command)
-
-			onlinePlayersMu.Lock()
-			onPlayerCount := len(onlinePlayers)
-			onlinePlayersMu.Unlock()
-
-			_, _ = fmt.Fprintln(conn, EvtPlayerCount(onPlayerCount))
-			slog.Info("SYS_MESSAGE", "recipient", (*player).Username, "message", EvtPlayerCount(onPlayerCount), "reason", "player joined server")
-
-		default:
+		if err != nil {
 			_, _ = fmt.Fprintln(conn, err.Error())
 			slog.Info(err.Error(), "remote", conn.RemoteAddr().String(), "command", command, "args", args)
 		}
@@ -203,7 +206,7 @@ func handleTCPConn(conn net.Conn) {
 		if loginState == LoginClosed {
 			break
 		}
-		
+
 		if err := conn.SetReadDeadline(time.Now().Add(idleTimeout)); err != nil {
 			slog.Warn("SET_READ_DEADLINE_ERROR", "err", err, "remote", conn.RemoteAddr().String())
 			deadlineFailed = true
