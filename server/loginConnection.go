@@ -203,7 +203,7 @@ func handleTCPConn(conn net.Conn) {
 		if loginState == LoginClosed {
 			break
 		}
-		
+
 		if err := conn.SetReadDeadline(time.Now().Add(idleTimeout)); err != nil {
 			slog.Warn("SET_READ_DEADLINE_ERROR", "err", err, "remote", conn.RemoteAddr().String())
 			deadlineFailed = true
