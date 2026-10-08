@@ -533,7 +533,10 @@ Break `world.yaml` on purpose (an exit to a missing room, an exit with an unknow
 ## Resources
 
 - RFC 42TAP (attached protocol spec) — primary reference for commands, events, and error codes.
-- AI usage (Claude), used during development for:
+- https://pkg.go.dev/fyne.io/fyne/v2#section-readme
+
+### AI Usage
+AI usage (Claude), used during development for:
   - Running `golangci-lint` against the server, since it couldn't be installed locally
   - Identifying a softban bypass bug (ban keys included the client's ephemeral port)
   - Designing the quest data model and response shapes, and splitting `ACCEPT` out of `QUEST`
