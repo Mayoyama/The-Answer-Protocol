@@ -9,7 +9,7 @@ build-CLI:
 	@$(MAKE) $(MAKE_FLAGS) CLI install
 
 build-GUI:
-
+	@$(MAKE) $(MAKE_FLAGS) GUI install
 
 run-server:
 	@$(MAKE) $(MAKE_FLAGS) server run
@@ -21,6 +21,7 @@ run-go-client:
 	@$(MAKE) $(MAKE_FLAGS) CLI run-go-client
 
 run-client-gui:
+	@$(MAKE) $(MAKE_FLAGS) CLI run
 
 
 lint:
