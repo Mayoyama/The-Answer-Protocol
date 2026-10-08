@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"time"
 )
+
+var queryCmds = []string{"LOOK", "WHO", "STATUS", "GOLD"}
 
 // handleInternalError reports an internal error to the client and closes the connection.
 func handleInternalError(conn net.Conn, err error, loginState *LoginStatus, slogKWARGS ...slog.Attr) {
@@ -39,6 +42,61 @@ func playerInBattle(conn net.Conn, command, pname string) bool {
 func commandDispatch(command, args string, loginState *LoginStatus, player *Player) {
 	pname := player.getPlayerName()
 
+	if command == "QUIT" && args == "" {
+		_, _ = fmt.Fprintln(player.Conn, "OK bye")
+		slog.Info("PLAYER_QUIT", "player", pname, "command", command)
+
+		*loginState = LoginClosed
+
+		_ = player.Conn.Close()
+
+		return
+	}
+
+	if slices.ContainsFunc(queryCmds, func(qCmd string) bool {
+		return qCmd == command
+	}) {
+		if ok := player.handleQueryBucket(time.Now()); !ok {
+			softBanned, timeRemaining := player.isOnTimeout(time.Now())
+
+			if softBanned {
+				player.handleSoftban(timeRemaining.Round(time.Second))
+
+			} else {
+				_, _ = fmt.Fprintln(player.Conn, InputSpamWarn.Error())
+				slog.Warn("SYS_MESSAGE", "remote", player.Conn.RemoteAddr().String(), "player", pname, "message", InputSpamWarn.Error())
+
+			}
+
+			return
+		}
+
+		if args != "" {
+			_, _ = fmt.Fprintln(player.Conn, InvalidArgsErr.Error())
+			slog.Info(InvalidArgsErr.Error(), "player", pname, "command", command, "args", nil)
+
+		} else {
+			switch command {
+			case "LOOK":
+				handleLook(player, loginState)
+
+			case "WHO":
+				handleWho(player, loginState, command)
+
+			case "STATUS":
+				printStatus(player, command, args)
+
+			case "GOLD":
+				printGoldBalance(player)
+
+			default:
+				slog.Warn(InternalErr.Error(), "player", pname, "command", command, "reason", "invalid command sent to query bucket, check query slice")
+			}
+		}
+
+		return
+	}
+
 	softBanned, timeRemaining := player.isOnTimeout(time.Now())
 	if softBanned {
 		player.handleSoftban(timeRemaining.Round(time.Second))
@@ -60,30 +118,13 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 		_, _ = fmt.Fprintln(player.Conn, AlreadyConnErr.Error())
 		slog.Info(AlreadyConnErr.Error(), "player", pname, "command", command, "args", args)
 
-	case "LOOK", "QUIT", "WHO", "STATUS", "INVENTORY", "KEYITEMS", "QUESTS", "GOLD", "FLEE":
+	case "QUIT", "INVENTORY", "KEYITEMS", "QUESTS", "FLEE":
 		if args != "" {
 			_, _ = fmt.Fprintln(player.Conn, InvalidArgsErr.Error())
 			slog.Info(InvalidArgsErr.Error(), "player", pname, "command", command, "args", nil)
 
 		} else {
 			switch command {
-			case "QUIT":
-				_, _ = fmt.Fprintln(player.Conn, "OK bye")
-				slog.Info("PLAYER_QUIT", "player", pname, "command", command)
-
-				*loginState = LoginClosed
-
-				_ = player.Conn.Close()
-
-			case "LOOK":
-				handleLook(player, loginState)
-
-			case "WHO":
-				handleWho(player, loginState, command)
-
-			case "STATUS":
-				printStatus(player, command, args)
-
 			case "INVENTORY":
 				printInventory(player, command, args)
 
@@ -92,9 +133,6 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 
 			case "QUESTS":
 				printPlayerQuests(player)
-
-			case "GOLD":
-				printGoldBalance(player)
 
 			case "FLEE":
 				OngoingBattlesMu.Lock()

@@ -45,6 +45,10 @@ type Player struct {
 	BucketTS       time.Time
 	TimeoutEnd     time.Time
 	TimeoutActions int
+	QueryCount     float64
+	QCBucketTS     time.Time
+	RejectionCount int
+	RejectionTS    time.Time
 	PlayerMu       sync.Mutex
 }
 
