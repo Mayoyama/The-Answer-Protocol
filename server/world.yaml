@@ -103,7 +103,7 @@ world:
         east: fallow_field
         west: market_square
       items:
-        - "item.millstone"
+        - "item.water_wheel"
         - "item.wheat_husks"
       spawns:
         - hilde
@@ -173,7 +173,7 @@ items:
 
   wall_marks:
     name: Scratched Wall Marks
-    description: Rows of tally marks scratched into the stone. Someone was clearly counting something.
+    description: A small patch of tally marks scratched into the stone. Someone was clearly counting something.
     obtainable: false
 
   berthas_stall:
@@ -196,9 +196,9 @@ items:
     description: A pinch of bright metal shavings from the smithy floor.
     obtainable: true
 
-  millstone:
-    name: Millstone
-    description: A great round stone, worn smooth at the centre.
+  water_wheel:
+    name: Water Wheel
+    description: A tall timber wheel, darkened by countless seasons spent half-submerged in the river. It complains loudly at every turn, as if it had opinions about the work.
     obtainable: false
 
   wheat_husks:
