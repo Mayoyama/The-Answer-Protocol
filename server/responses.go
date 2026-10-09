@@ -70,4 +70,6 @@ type InventoryResponse []string
 type ExamineResponse struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Obtainable  bool   `json:"obtainable,omitempty"`
+	NPCRole     string `json:"npc_role,omitempty"`
 }

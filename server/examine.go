@@ -23,11 +23,16 @@ func examineDispatcher(scope, target string, player *Player) (string, error) {
 			return currLoc, NPCNotFoundErr
 		}
 
+		npcRole := npc.getNPCRole()
+
 		npc.NPCMu.Lock()
+
 		exResponse = ExamineResponse{
 			Name:        npc.NPCName,
 			Description: npc.Description,
+			NPCRole:     npcRole,
 		}
+
 		npc.NPCMu.Unlock()
 
 	case "ITEM":
@@ -52,6 +57,7 @@ func examineDispatcher(scope, target string, player *Player) (string, error) {
 		exResponse = ExamineResponse{
 			Name:        i.ItemName,
 			Description: i.Description,
+			Obtainable:  i.Obtainable,
 		}
 
 	case "KEYITEM":

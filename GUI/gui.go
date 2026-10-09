@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
-	"encoding/json"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"

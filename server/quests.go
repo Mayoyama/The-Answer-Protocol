@@ -130,43 +130,7 @@ func printPlayerQuests(player *Player) {
 	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+string(rq), "command", "QUESTS")
 }
 
-// checkNPCQuest handles QUEST — reports whether the NPC currently has an
-// eligible quest for the player, without changing any player state.
-func checkNPCQuest(player *Player, targetNPC string) error {
-	pname := player.getPlayerName()
-	npc, exists := resolveNPC(targetNPC)
-
-	if !exists {
-		return NPCNotFoundErr
-	}
-
-	_, quest, eligible := npc.getNPCQuest(player)
-
-	if !eligible {
-		return NoQuestAvailErr
-	}
-
-	newQuestResponse := QuestResponse{
-		QuestID:     quest.QuestID,
-		Description: quest.Description,
-		Reward:      quest.Reward,
-		Status:      "available",
-	}
-
-	qr, err := json.Marshal(newQuestResponse)
-
-	if err != nil {
-		return JSONErr
-	}
-
-	_, _ = fmt.Fprintln(player.Conn, "OK "+string(qr))
-	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+string(qr), "command", "QUEST", "npc", targetNPC)
-
-	return nil
-}
-
-// acceptQuest handles ACCEPT — commits the player to a quest previously
-// reported eligible by checkNPCQuest, adding it to player.Quests as Active.
+// acceptQuest handles QUEST — adds a quest to player.Quests and sets it as Active.
 func acceptQuest(player *Player, targetNPC string) error {
 	pname := player.getPlayerName()
 	npc, exists := resolveNPC(targetNPC)
@@ -197,7 +161,7 @@ func acceptQuest(player *Player, targetNPC string) error {
 		QuestID:     quest.QuestID,
 		Description: quest.Description,
 		Reward:      quest.Reward,
-		Status:      "active",
+		Status:      "available",
 	}
 
 	qr, err := json.Marshal(newQuestResponse)
@@ -207,7 +171,7 @@ func acceptQuest(player *Player, targetNPC string) error {
 	}
 
 	_, _ = fmt.Fprintln(player.Conn, "OK "+string(qr))
-	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+string(qr), "command", "ACCEPT", "npc", targetNPC)
+	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+string(qr), "command", "QUEST", "npc", targetNPC)
 
 	return nil
 }
