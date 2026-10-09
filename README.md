@@ -35,7 +35,7 @@ See **Building and Running** below.
 ## Architecture
 
 ### Dispatcher-based design
-Two dispatch layers: `handleLogin` handles the pre-authentication state (CONNECT/QUIT only, with its own token-bucket spam guard), then once a player has an identity, `commandDispatch` takes over as the central command router for all in-game commands (LOOK, MOVE, CHAT, GROUP, TAKE, DROP, TALK, EXAMINE, ATTACK, FLEE, QUEST, ACCEPT, STATUS, INVENTORY, KEYITEMS, QUESTS, GOLD, WHO, QUIT). `GROUP` and `CHAT` each have their own sub-dispatcher (`groupFuncDispatcher`, `chatDispatcher`) for their subcommands/scopes.
+Two dispatch layers: `handleLogin` handles the pre-authentication state (CONNECT/QUIT only, with its own token-bucket spam guard), then once a player has an identity, `commandDispatch` takes over as the central command router for all in-game commands (LOOK, MOVE, CHAT, GROUP, TAKE, DROP, TALK, EXAMINE, ATTACK, FLEE, QUEST, STATUS, INVENTORY, KEYITEMS, QUESTS, GOLD, WHO, QUIT). `GROUP` and `CHAT` each have their own sub-dispatcher (`groupFuncDispatcher`, `chatDispatcher`) for their subcommands/scopes.
 
 ### Concurrency model
 One goroutine per accepted TCP connection (`handleTCPConn`), reading line-by-line with a 15-minute idle read deadline. Shared state is protected with fine-grained mutexes rather than a single global lock: each `Player`, `Zone`, and `Group` has its own mutex, plus package-level mutexes for the top-level registries (`onlinePlayers`, `zones`, `parties`, `items`, `npcs`, the softban/rate-limit maps). The `keyItems` registry is only written while `world.yaml` is loaded and is read-only afterwards, so it needs no mutex. Broadcasts (chat, zone enter/leave, group events) iterate the relevant map while holding its mutex and write directly to each player's `net.Conn`.
@@ -44,7 +44,7 @@ One goroutine per accepted TCP connection (`handleTCPConn`), reading line-by-lin
 Each fight runs in its own goroutine (`processBattle`, `battle.go`). The player's connection goroutine sends one signal per `ATTACK` on an unbuffered channel and waits for that round's result on a second channel, so rounds are strictly sequential and fight state is only touched by the fight goroutine. Ongoing fights are tracked in `OngoingBattles` (keyed by player name, own mutex).
 
 ### Rate limiting / abuse handling
-Implemented in `security.go`: a per-player token-bucket throttle (refill 0.75/sec, capacity 8) gates command frequency; falling below 1 token starts a 5-minute per-player timeout (`ERR 750`, escalating warnings) that, after 10 repeated violations, becomes a hard IP-level ban (`ERR 760`, 20–30 min) enforced at accept-time before the connection is even handed to `handleTCPConn`. IP bans are keyed on the bare host (port stripped via `net.SplitHostPort`), not `RemoteAddr().String()`, so a client can't dodge a ban by reconnecting on a new ephemeral port. This satisfies RFC §9.4's "chat message frequency" resource-limit recommendation.
+Implemented in `security.go`: a per-player token-bucket throttle (refill 0.75/sec, capacity 8) gates command frequency; falling below 1 token starts a 1-minute per-player timeout (`ERR 750`, escalating warnings) that, after 10 repeated violations, becomes a hard IP-level ban (`ERR 760`, 20–30 min) enforced at accept-time before the connection is even handed to `handleTCPConn`. IP bans are keyed on the bare host (port stripped via `net.SplitHostPort`), not `RemoteAddr().String()`, so a client can't dodge a ban by reconnecting on a new ephemeral port. Read-only queries (`LOOK`, `WHO`, `STATUS`, `GOLD`) use a separate bucket (refill 1/sec, capacity 8) so a client that polls them doesn't drain the main one: when it is empty, the query is answered with `ERR 747 EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` and nothing else happens, but about 20 rejected queries within 10 seconds start the same 1-minute timeout. Queries and a bare `QUIT` are still answered during a timeout, and a query rejected during a timeout counts as a violation. This satisfies RFC §9.4's "chat message frequency" resource-limit recommendation.
 
 [↑ Back to top](#top)
 
@@ -99,9 +99,10 @@ Additions beyond the RFC's table, using codes the RFC leaves unassigned or reusi
 | 404 | `PLAYER_NOT_FOUND` | Invited player doesn't exist |
 | 405 | `NPC_CURRENTLY_OCCUPIED` | NPC is already in a fight with another player |
 | 666 | `INVALID_COMMAND` | Unknown command (malformed-command handling, RFC §9.3) |
-| 666 | `COMMAND_NOT_AVAILABLE_IN_COMBAT` | `MOVE`, `TAKE`, `DROP`, `QUEST` and `ACCEPT` are refused during a fight |
+| 666 | `COMMAND_NOT_AVAILABLE_IN_COMBAT` | `MOVE`, `TAKE`, `DROP` and `QUEST` are refused during a fight |
 | 670 | `INVALID_ARGS` / `MISSING_ARGS` | Unexpected or missing arguments |
-| 750 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_APPLIED` | Rate limit exceeded; temporary timeout (see Architecture) |
+| 747 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` | A read-only query (`LOOK`, `WHO`, `STATUS`, `GOLD`) was rejected because its rate limit bucket is empty; no timeout is applied (see Architecture) |
+| 750 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_APPLIED` | Rate limit exceeded; a 1-minute timeout is applied, and replies sent during it end with `Time remaining: <time>` (see Architecture) |
 | 760 | `SOFTBANNED_FROM_SERVER` | IP temporarily banned after repeated violations (see Architecture) |
 | 825 | `INTERNAL_ERROR` | Unexpected server-side failure |
 | 878 | `YAML_ERROR` | Reserved for world-data parsing errors (not currently sent to clients) |
@@ -143,6 +144,8 @@ S: OK {"quest_id": "fetch_herbs", "description": "Bring me 3 healing herbs", "re
 
 This server returns `reward` as a nested object instead of a string, since a quest's reward can be a key item, gold, or both — a single string can't hold that combination without the client having to parse it back apart. `reward` is `null` when a quest has no reward (e.g. a step in a chain with no direct payout).
 
+RFC 42TAP §6.1.2 leaves acceptance mechanics to the implementer. Here `QUEST <npc>` both offers and accepts: the NPC's next eligible quest (the first one that NPC offers which the player doesn't already have, and whose prerequisite, if any, is completed — `NPC.getNPCQuest`) is added to the player's quest list, and the reply is that quest with `status: "available"`, as in the RFC's example. `QUESTS` then reports it as `"active"` until it is `"completed"`. If the NPC has nothing to offer, the reply is `ERR 406 NO_QUEST_AVAILABLE`.
+
 ```go
 type QuestResponse struct {
     QuestID     string  `json:"quest_id"`
@@ -177,20 +180,6 @@ S: OK [{"quest_id":"quest.bread_for_kassandra","status":"completed"},{"quest_id"
 
 RFC 42TAP §6.1.1 and §6.1.2 leave additional combat and quest commands to the implementer. This server adds the following commands; all of them use the standard `OK` / `ERR <code> <MESSAGE>` replies.
 
-#### `ACCEPT`
-
-RFC 42TAP §6.1.2 defines `QUEST` and `QUESTS` as the only mandated quest commands, and explicitly leaves acceptance mechanics — and any further commands ("e.g. `COMPLETE_QUEST`, `ABANDON_QUEST`, or similar") — to the implementer.
-
-Quest acceptance is split out into its own command, `ACCEPT`, rather than folded into `QUEST`. This keeps `QUEST` a pure, side-effect-free query that matches the RFC's example exactly (`status: "available"`, no player state changed), while `ACCEPT` is the one command that actually commits the player to a quest — adding it to their tracked quest list with `status: "active"`. Both commands resolve the same NPC-eligibility check (`NPC.getNPCQuest`): the first quest that NPC offers which the player doesn't already have, and whose prerequisite (if any) is already completed.
-
-```
-C: QUEST george
-S: OK {"quest_id": "quest.bread_for_kassandra", "description": "George seems to need help with his daily chores.", "reward": {"key_item": "key_item.rusty_dagger"}, "status": "available"}
-
-C: ACCEPT george
-S: OK {"quest_id": "quest.bread_for_kassandra", "description": "George seems to need help with his daily chores.", "reward": {"key_item": "key_item.rusty_dagger"}, "status": "active"}
-```
-
 #### `FLEE`
 
 `FLEE` (no argument; a player can only be in one fight at a time) ends the player's current fight early (`OK battle ended`). The fight is abandoned with no reward and no respawn; the player keeps their current HP. Outside a fight it returns `ERR 666 INVALID_COMMAND`. RFC 42TAP §6.1.1 lists `FLEE` as an example of an implementer-defined combat command.
@@ -209,14 +198,17 @@ EXAMINE <NPC|ITEM|KEYITEM> <name>
 
 The first word picks what to look up (case-insensitive); the rest is the name, matched by display name, ID or `world.yaml` key, case-insensitively. The scope word is required: `EXAMINE tankard` without it returns `ERR 670 INVALID_ARGS`.
 
-- `NPC` — the NPC must be in the player's room (`ERR 404 NPC_NOT_FOUND` otherwise).
-- `ITEM` — the item must be in the player's room or inventory (`ERR 404 ITEM_NOT_FOUND` otherwise).
+- `NPC` — the NPC must be in the player's room (`ERR 404 NPC_NOT_FOUND` otherwise). The reply adds `npc_role` (`general`, `questGiver`, `healer` or `enemy`), so a client can tell whether the NPC offers quests.
+- `ITEM` — the item must be in the player's room or inventory (`ERR 404 ITEM_NOT_FOUND` otherwise). The reply adds `obtainable`, which is `true` for items that can be taken; the field is left out for fixed scenery.
 - `KEYITEM` — the player must hold the key item (`ERR 404 ITEM_NOT_IN_INVENTORY` otherwise).
 - Any other scope word returns `ERR 670 INVALID_ARGS`.
 
 ```
 C: EXAMINE ITEM tankard
-S: OK {"name":"Dented Tankard","description":"A well-used tankard, still smells faintly of ale."}
+S: OK {"name":"Dented Tankard","description":"A well-used tankard. Smells of dark ale.","obtainable":true}
+
+C: EXAMINE NPC george
+S: OK {"name":"George","description":"The tavern keeper, wiping down the same mug for the tenth time.","npc_role":"questGiver"}
 ```
 
 #### `KEYITEMS`
@@ -312,7 +304,7 @@ A quest can optionally name a prerequisite via `requires: <quest_key>` (a bare q
 Each `Player` has a `Quests map[string]*PlayerQuest` (`quests.go`), tracking `Quest`, `StepIndex`, and `Status` (`Active`/`Completed`) per accepted quest. `NPC.getNPCQuest` picks the first quest that NPC offers which the player doesn't already have, and whose prerequisite (if any) is already `Completed`.
 
 ### Commands
-`QUEST` (`checkNPCQuest`) reports an NPC's next eligible quest for the calling player without changing any state. `ACCEPT` (`acceptQuest` — a custom addition, see Protocol Implementation) commits the player to that quest, adding it to `player.Quests` as `Active`. `QUESTS` (`printPlayerQuests`) lists everything the calling player has accepted, showing `progress` (`stepIndex/totalSteps`) only while a quest is still `Active`, plus `quest_items` when the current step needs key items (see Protocol Implementation).
+`QUEST` (`acceptQuest`) takes an NPC's next eligible quest for the calling player: it adds the quest to `player.Quests` as `Active` and replies with the quest (`status: "available"`, as in the RFC's example; see Protocol Implementation). `QUESTS` (`printPlayerQuests`) lists everything the calling player has accepted, as `"active"` or `"completed"`, showing `progress` (`stepIndex/totalSteps`) only while a quest is still `Active`, plus `quest_items` when the current step needs key items (see Protocol Implementation).
 
 ### Step progression
 Each step type advances inside the handler for the action it describes, only for the calling player, and only when it is that quest's current step:
@@ -442,7 +434,7 @@ The map has two loops that share the Old Well (Fountain Square → Chapel → Ch
 - **Enemies:** the Barbarian (hp 90, the tougher fight) and the Cave Bat (hp 36 but hard to hit, dex 30).
 
 ### Items (19, 7 obtainable)
-Obtainable: Dented Tankard, Empty Coin Purse, Prayer Candle, Wooden Bucket, Metal Shavings, Handful of Wheat Husks, Field Flower. The rest (e.g. Weathered Fountain, Wanted Poster, Anvil, Millstone) are fixed scenery: they show up in `LOOK` but can't be taken. Key items (Loaf of Bread, Rusty Dagger, Small Gem, Ornate Dagger) are quest items held separately from the normal inventory (see Quest System → Key items).
+Obtainable: Dented Tankard, Empty Coin Purse, Prayer Candle, Wooden Bucket, Metal Shavings, Handful of Wheat Husks, Field Flower. The rest (e.g. Weathered Fountain, Wanted Poster, Anvil, Water Wheel) are fixed scenery: they show up in `LOOK` but can't be taken. Key items (Loaf of Bread, Rusty Dagger, Small Gem, Ornate Dagger) are quest items held separately from the normal inventory (see Quest System → Key items).
 
 ### Quests (4)
 - *A loaf for the needy* (George) — deliver bread to Kassandra. Reward: rusty dagger.
@@ -510,20 +502,20 @@ Go to the Fallow Field (taverne → east → south → east → east) and `ATTAC
 
 ### Quests
 A full walkthrough of the quest chain:
-1. In the Taverne: `QUEST george`, `ACCEPT george`, `TALK george` → the reply ends with `(You receive Loaf of Bread)`. `KEYITEMS` now lists the loaf; `EXAMINE KEYITEM loaf of bread` describes it.
+1. In the Taverne: `QUEST george` (accepts the quest), `TALK george` → the reply ends with `(You receive Loaf of Bread)`. `KEYITEMS` now lists the loaf; `EXAMINE KEYITEM loaf of bread` describes it.
 2. Fountain Square: `TALK kassandra` → the loaf is handed over, quest complete, reward line shown. `QUESTS` shows it as completed.
-3. `QUEST kassandra` now offers *Something in the Well*; `ACCEPT kassandra`, `TALK kassandra`.
+3. `QUEST kassandra` now accepts *Something in the Well*; `TALK kassandra`.
 4. `MOVE east` into the Old Well → the eerie-sounds message appears.
 5. `MOVE down`, `ATTACK cave bat` until it is defeated.
 6. Back to Fountain Square, `TALK kassandra` → quest complete; `GOLD` shows 20.
-7. In the Smithy: `ACCEPT brannoc`, `TALK brannoc` (hint), then `TALK brannoc` again → the Rusty Dagger and Small Gem are handed over, the Ornate Dagger is received with `+2 BattleSkill`.
+7. In the Smithy: `QUEST brannoc`, `TALK brannoc` (hint), then `TALK brannoc` again → the Rusty Dagger and Small Gem are handed over, the Ornate Dagger is received with `+2 BattleSkill`.
 
 *Arms Dealer* can also be accepted early: before both items are held, `TALK brannoc` gives his missing-items line and `QUESTS` shows `"quest_items":"1/2"` (or `0/2`).
 
 *A Lesson in Manners* works the same way with Bertha in the Market Square and the Barbarian in the Fallow Field.
 
 ### EXAMINE
-`EXAMINE ITEM tankard` in the Taverne (also after `TAKE tankard`), `EXAMINE NPC george`, `EXAMINE KEYITEM rusty dagger` before and after handing it to Brannoc (`ITEM_NOT_IN_INVENTORY` once it's gone), and `EXAMINE FOO x` (`INVALID_ARGS`).
+`EXAMINE ITEM tankard` in the Taverne (also after `TAKE tankard`), `EXAMINE NPC george` (shows `npc_role`), `EXAMINE KEYITEM rusty dagger` before and after handing it to Brannoc (`ITEM_NOT_IN_INVENTORY` once it's gone), and `EXAMINE FOO x` (`INVALID_ARGS`).
 
 ### World validation
 Break `world.yaml` on purpose (an exit to a missing room, an exit with an unknown direction such as `northwest`, a quest step targeting a missing NPC, a healer without `heal_dialogue`, a key item with the same name as an item, a `receives_key_items` entry nobody grants, a step grant that is never received back) and check the server refuses to start and lists each problem.
@@ -539,7 +531,7 @@ Break `world.yaml` on purpose (an exit to a missing room, an exit with an unknow
 AI usage (Claude), used during development for:
   - Running `golangci-lint` against the server, since it couldn't be installed locally
   - Identifying a softban bypass bug (ban keys included the client's ephemeral port)
-  - Designing the quest data model and response shapes, and splitting `ACCEPT` out of `QUEST`
+  - Designing the quest data model and response shapes (including a separate `ACCEPT` command that was later merged back into `QUEST`)
   - Spotting concurrency bugs: a cross-zone mutex-ordering deadlock risk, a self-deadlock when a player disconnects mid-fight, and lock/unlock pairing in the quest-step hooks
   - Spotting a redundant-recursion bug in the map cycle-detection helper
   - Suggesting world-building ideas (room layout, NPCs, items, draft descriptions and dialogue), which were then edited and chosen by hand

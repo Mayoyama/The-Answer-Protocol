@@ -163,7 +163,7 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 			}
 		}
 
-	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "QUEST", "ACCEPT", "EXAMINE":
+	case "MOVE", "CHAT", "GROUP", "TAKE", "DROP", "TALK", "ATTACK", "QUEST", "EXAMINE":
 		if args == "" {
 			_, _ = fmt.Fprintln(player.Conn, MissingArgsErr.Error())
 			slog.Info(MissingArgsErr.Error(), "player", pname, "command", command, "args", args)
@@ -283,24 +283,6 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 				}
 
 			case "QUEST":
-				if playerInBattle(player.Conn, command, pname) {
-					return
-				}
-
-				err := checkNPCQuest(player, args)
-
-				switch err {
-				case nil:
-				case JSONErr:
-					_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
-					slog.Error(JSONErr.Error(), "player", pname, "command", command, "args", args)
-
-				default:
-					_, _ = fmt.Fprintln(player.Conn, err.Error())
-					slog.Info(err.Error(), "player", pname, "command", command, "npc", args)
-				}
-
-			case "ACCEPT":
 				if playerInBattle(player.Conn, command, pname) {
 					return
 				}
