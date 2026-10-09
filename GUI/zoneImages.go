@@ -84,12 +84,7 @@ func loadZoneImages() []error {
 	return errs
 }
 
-func buildNewZoneImage() *Screen {
-	const (
-		w = 1280
-		h = 720
-	)
-
+func buildNewZoneImage(w, h float32) *Screen {
 	backgroundRect := canvas.NewRectangle(color.RGBA{R: 40, G: 40, B: 50, A: 255})
 	backgroundRect.SetMinSize(fyne.NewSize(w, h))
 
