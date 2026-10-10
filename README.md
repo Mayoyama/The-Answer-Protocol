@@ -1,6 +1,6 @@
-<a id="top"></a>
-
 *This project has been created as part of the 42 curriculum by speterse.*
+
+<a id="top"></a>
 
 # TAP — The Answer Protocol
 
@@ -10,6 +10,7 @@
 - [Instructions](#instructions)
 - [Architecture](#architecture)
 - [CLI Client](#cli-client)
+- [GUI Client](#gui-client)
 - [Protocol Implementation](#protocol-implementation)
 - [Combat System](#combat-system)
 - [Quest System](#quest-system)
@@ -22,13 +23,19 @@
 
 ## Description
 
-TAP (The Answer Protocol) is a shared-world, TCP-based text adventure: a Go server hosts a persistent world (rooms, items, NPCs) that multiple clients connect to over a line-based text protocol (RFC 42TAP), with real-time chat, movement, grouping, and item interaction. The server also runs a turn-based combat system, a quest system with chained quests and key items, and a healer NPC. This repo currently contains the **server** and a **CLI client** (in both Go and Rust); the **GUI client** (planned in Go with Fyne) is not yet implemented.
+TAP (The Answer Protocol) is a shared-world, TCP-based text adventure: a Go server hosts a persistent world (rooms, items, NPCs) that multiple clients connect to over a line-based text protocol (RFC 42TAP), with real-time chat, movement, grouping, and item interaction. The server also runs a turn-based combat system, a quest system with chained quests and key items, and a healer NPC. This repo currently contains the **server**, a **CLI client** (in both Go and Rust) and a **GUI client** (Go with Fyne), which is still in progress.
 
 [↑ Back to top](#top)
 
 ## Instructions
 
-See **Building and Running** below.
+Requirements: Go, Rust/Cargo for the Rust CLI, and a C compiler for the GUI client (Fyne uses cgo); versions and details are under **Building and Running**. From the repository root:
+
+1. `make install` downloads the dependencies and builds the server, both CLI clients and the GUI client.
+2. `make run-server` starts the server on TCP port 4242.
+3. In another terminal, start a client: `make run-client` (Rust CLI), `make run-go-client` (Go CLI) or `make run-client-gui` (GUI).
+
+`make lint` and `make clean` cover all components.
 
 [↑ Back to top](#top)
 
@@ -44,7 +51,7 @@ One goroutine per accepted TCP connection (`handleTCPConn`), reading line-by-lin
 Each fight runs in its own goroutine (`processBattle`, `battle.go`). The player's connection goroutine sends one signal per `ATTACK` on an unbuffered channel and waits for that round's result on a second channel, so rounds are strictly sequential and fight state is only touched by the fight goroutine. Ongoing fights are tracked in `OngoingBattles` (keyed by player name, own mutex).
 
 ### Rate limiting / abuse handling
-Implemented in `security.go`: a per-player token-bucket throttle (refill 0.75/sec, capacity 8) gates command frequency; falling below 1 token starts a 1-minute per-player timeout (`ERR 750`, escalating warnings) that, after 10 repeated violations, becomes a hard IP-level ban (`ERR 760`, 20–30 min) enforced at accept-time before the connection is even handed to `handleTCPConn`. IP bans are keyed on the bare host (port stripped via `net.SplitHostPort`), not `RemoteAddr().String()`, so a client can't dodge a ban by reconnecting on a new ephemeral port. Read-only queries (`LOOK`, `WHO`, `STATUS`, `GOLD`) use a separate bucket (refill 1/sec, capacity 8) so a client that polls them doesn't drain the main one: when it is empty, the query is answered with `ERR 747 EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` and nothing else happens, but about 20 rejected queries within 10 seconds start the same 1-minute timeout. Queries and a bare `QUIT` are still answered during a timeout, and a query rejected during a timeout counts as a violation. This satisfies RFC §9.4's "chat message frequency" resource-limit recommendation.
+Implemented in `security.go`: a per-player token-bucket throttle (refill 0.75/sec, capacity 8) gates command frequency; falling below 1 token starts a 1-minute per-player timeout (`ERR 750`). Every input sent during the timeout is answered with a warning that shows the time remaining and counts as a violation; the 10th violation becomes a hard IP-level ban (`ERR 760`, 20 minutes). A host that opens 5 connections within 5 seconds is banned as well (20–30 minutes, chosen at random; `trackConnCount`). Bans are checked as each connection is accepted, before it is handed to `handleTCPConn`. IP bans are keyed on the bare host (port stripped via `net.SplitHostPort`), not `RemoteAddr().String()`, so a client can't dodge a ban by reconnecting on a new ephemeral port. Read-only queries (`LOOK`, `WHO`, `STATUS`, `GOLD`) use a separate bucket (refill 1/sec, capacity 8) so a client that polls them doesn't drain the main one: when it is empty, the query is answered with `ERR 747 EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` and nothing else happens, but about 20 rejected queries within 10 seconds start the same 1-minute timeout. A bare `QUIT` is always answered, and so are queries while the query bucket has tokens, even during a timeout; a query rejected during a timeout counts as a violation. This satisfies RFC §9.4's "chat message frequency" resource-limit recommendation.
 
 [↑ Back to top](#top)
 
@@ -63,6 +70,21 @@ Both behave the same way: they connect to the server on `localhost:4242`, ask fo
 The subject (V.3) allows two approaches: passing user input straight through as RFC protocol syntax, or building a translation layer that maps friendlier commands to protocol packets.
 
 The CLI uses the first option: it sends what the user types directly to the server as-is (e.g. typing `MOVE north` sends `MOVE north` verbatim). The only exceptions are the initial `CONNECT <username>` prompt on startup and `QUIT` on disconnect/Ctrl+C/Ctrl+D, which the client sends automatically. No parsing, aliasing, or friendlier syntax is implemented on top of raw protocol commands.
+
+[↑ Back to top](#top)
+
+## GUI Client
+
+The GUI client (`GUI/`, Go with Fyne v2.8.1) is still in progress. What works today:
+
+- **Login:** a username field and a Connect button. The name is trimmed and checked (2–10 characters, as the server requires) before anything is sent, so a bad name never reaches the server's rate limiter. Server errors (for example `ERR 201 NAME_IN_USE`) are shown under the button, which is enabled again.
+- **Game screen:** after `OK connected` the client sends `LOOK` and shows the room's name and description under the zone image (the ten PNGs in `GUI/assets/` are embedded in the binary and drawn at 1280×720 with nearest-neighbour scaling; a zone without an image shows a plain colour). Six direction buttons (north, west, east, south, up, down) send `MOVE`; the client then sends `LOOK` for the new room.
+- **Errors:** an `ERR` reply is shown below the buttons for three seconds. On `ERR 750` the direction buttons are disabled for the time given in the reply's `Time remaining` text (one minute if there is none), so a player can't pile up violations during a timeout.
+- **Connection loss:** the client returns to the login screen with a "Connection lost" message.
+
+Not implemented yet: chat, inventory, `TAKE`/`DROP`, `TALK`, `ATTACK`, quests, `STATUS`, the player counters and the handling of server events.
+
+**Design.** One router goroutine owns the connection and all connection state; button callbacks only send requests on channels, and widgets are updated through `fyne.Do`. `TAPResponsesParser.go` turns each server line into a typed reply (room move, look, error, chat, ...), so the router never parses strings itself.
 
 [↑ Back to top](#top)
 
@@ -279,6 +301,14 @@ During a fight the player's status is `engaged`. When a fight ends (or after hea
 ### Healing
 `TALK` to a `healer` NPC while below max HP restores the player to full HP and returns the healer's heal line (from `world.yaml`'s `heal_dialogue`) followed by `(You feel a warm glow)`. At full HP the healer just uses their normal dialogue. The reply deliberately doesn't show the new HP; players check `STATUS`.
 
+### Design choices
+- **One-on-one, instanced fights:** each fight runs in its own goroutine and only the fighting player can act in it, so rounds are strictly sequential and fight state is only touched by that goroutine. Other players in the room see the start and end announcements only.
+- **Both sides attack every round:** initiative only decides who strikes first, so a lucky roll helps without deciding the fight. Dexterity (dodge) is what makes enemies feel different: the Cave Bat is weak but hard to hit.
+- **Defeated, not killed:** the NPC's HP during a fight is a per-fight copy, so an enemy is available to everyone again immediately and a quest that needs a fight can be retried.
+- **Respawn at half HP:** losing is a setback rather than a failure; a loss never fails a quest.
+- **Balance:** enemy stats were tuned with a fight simulation so that a full-HP player beats the Cave Bat (losing about 24 HP on average) while the Barbarian (90 HP) is the tougher fight.
+- **Additional commands:** `FLEE` is the only additional combat command; there is no `DEFEND`.
+
 ### `ATTACK` response
 The RFC example shows `attacker_hp`, `target_hp`, `damage` and `status`. This server's reply keeps those and adds the details of the round:
 
@@ -453,7 +483,36 @@ After `ValidateWorldData` passes, two map checks run before the server starts li
 
 ## Server Logging
 
-Structured JSON logging via `log/slog` (`slog.NewJSONHandler`, written to stderr), with `INFO`/`WARN`/`ERROR` levels. Every command handler logs its outcome with player name, command, and relevant args/state; connects, disconnects (graceful, idle-timeout, and error paths), and abuse events (spam timeouts, softbans, connection-flood detection) are all logged with the remote address. `PLAYER_CLEANUP_COMPLETE` and per-zone leave events are logged on disconnect/cleanup. JSON output plus slog's built-in timestamps satisfy the "structured, timestamped, parseable" logging requirement.
+### Format and output
+Structured JSON logging via `log/slog` (`slog.NewJSONHandler`), one JSON object per line, written to stderr, with `INFO`/`WARN`/`ERROR` levels. Every line has a `time` (RFC 3339 timestamp), a `level` and a `msg`, plus attributes such as `player`, `command`, `args` and `remote` (the client's address). JSON output plus slog's timestamps satisfy the "structured, timestamped, parseable" logging requirement. Example (values made up):
+
+```json
+{"time":"2026-10-09T21:14:03+02:00","level":"INFO","msg":"PLAYER_CONNECTED","remote":"127.0.0.1:51234","player":"alice","args":"alice"}
+```
+
+### Event types
+- **Commands:** every command handler logs its outcome with player name, command, and relevant args/state. A failed command is logged with the protocol error as `msg` (e.g. `ERR 301 NO_EXIT`).
+- **Server responses:** `SYS_MESSAGE` records a reply or event the server sent (`message`, with `player` or `recipient`). Events such as `EVT ROOM PRESENCE ENTER alice` are logged with the event text as `msg` or in a `SYS_MESSAGE`.
+- **Connections:** `PLAYER_CONNECTED`, `PLAYER_QUIT`, `CONNECTION_CLOSED_BY_CLIENT`, `CONNECTION_CLOSED_SAFELY`, `CONNECTION_IDLE_TIMEOUT_ERROR`, `CONNECTION_READ_ERROR`, `SET_READ_DEADLINE_ERROR` and `PLAYER_CLEANUP_COMPLETE` (plus per-zone leave events on disconnect), logged with the remote address.
+- **Abuse:** spam timeouts, soft bans and connection-flood detection are logged at `WARN` (see below).
+- **Startup and shutdown:** `WORLD_DATA_VALIDATED`, `MAP_CONNECTIVITY_VALIDATED`, `MAP_LOOP_VALIDATED`, `SHUTDOWN_SIGNAL_RECEIVED`, `PERFORMING_CLEANUP` and `SERVER_SHUTTING_DOWN`. World validation problems are logged at `ERROR`, one line each, and stop the server.
+
+Levels: `INFO` for normal activity, `WARN` for abuse and unexpected but survivable situations, `ERROR` for failures (internal errors, invalid world data).
+
+### Monitoring and detecting abuse
+The server logs to stderr, so redirect it to keep a file and read it with `tail` and `grep`:
+
+```
+make run-server 2> server.log                       # in one terminal
+tail -f server.log                                  # in another: follow the log live
+grep '"level":"WARN"' server.log                    # only warnings
+grep -E 'ERR (747|750|760)' server.log              # only rate-limit and ban events
+```
+
+The last command shows only rate-limiting and ban events:
+
+- **Command flooding:** `ERR 747` (a query was rejected because its bucket is empty) and `ERR 750` (a timeout was applied, or the player kept sending input during one) appear in the `message` of `WARN` lines, with the `player` and `remote`; `time_remaining` shows how long a timeout still lasts. `"reason":"query bucket flooding"` marks a player who got a timeout for flooding queries.
+- **Rapid connections and repeated violations:** `ERR 760 SOFTBANNED_FROM_SERVER` is logged as the `msg` of a `WARN` line with the address (`remote`). Several `ERR 750` lines for one `player` followed by `ERR 760` show a client that ignored its timeout.
 
 [↑ Back to top](#top)
 
@@ -465,26 +524,27 @@ The Answer Protocol is designed as a group project for 2–3 learners. As no eli
 - **CLI clients**: Go and Rust versions
 - **World design**: rooms, NPCs, items, dialogue and quests
 - **Documentation**: this README
-- **GUI client**: still in progress
+- **GUI client** (Go, Fyne): in progress
 
 [↑ Back to top](#top)
 
 ## Building and Running
 
-Requirements: Go (the server's `go.mod` targets Go 1.27; single dependency `gopkg.in/yaml.v3`) and Rust/Cargo for the Rust CLI (dependencies `anyhow`, `ctrlc`).
+Requirements: Go (the server's `go.mod` targets Go 1.27; single dependency `gopkg.in/yaml.v3`), Rust/Cargo for the Rust CLI (dependencies `anyhow`, `ctrlc`), and for the GUI client Fyne v2.8.1 (downloaded by `go mod`), which needs cgo: a C compiler and the platform's graphics development libraries must be installed (see Fyne's Getting Started page).
 
 From the repository root:
 
 | Target | What it does |
 |---|---|
-| `make install` | Downloads Go modules and builds the server and both CLI clients |
+| `make install` | Downloads Go modules and builds the server, both CLI clients and the GUI client |
 | `make run-server` | Starts the server on TCP port 4242 (reads `server/world.yaml`) |
 | `make run-client` | Starts the Rust CLI client |
 | `make run-go-client` | Starts the Go CLI client |
-| `make lint` | `go vet` on the server and Go CLI, `cargo check` on the Rust CLI |
+| `make run-client-gui` | Starts the GUI client (the server must be running) |
+| `make lint` | `go vet` on the server, the Go CLI and the GUI, `cargo check` on the Rust CLI |
 | `make clean` | `go clean` / `cargo clean` |
 
-`make -C server format` and `make -C CLI format` run `gofmt` (and `cargo fmt` for the CLI). `build-GUI` and `run-client-gui` exist as placeholders until the GUI client is written.
+`make -C server format`, `make -C CLI format` and `make -C GUI format` run `gofmt` (and `cargo fmt` for the CLI). `make build-GUI` builds only the GUI client. All three clients connect to `localhost:4242`, so start the server first.
 
 Both CLI clients connect to `localhost:4242`, prompt for a username, and send `CONNECT <username>` automatically. After that, type protocol commands directly (e.g. `LOOK`, `MOVE east`, `TALK george`). `QUIT`, Ctrl+C or Ctrl+D disconnects.
 
@@ -517,6 +577,9 @@ A full walkthrough of the quest chain:
 ### EXAMINE
 `EXAMINE ITEM tankard` in the Taverne (also after `TAKE tankard`), `EXAMINE NPC george` (shows `npc_role`), `EXAMINE KEYITEM rusty dagger` before and after handing it to Brannoc (`ITEM_NOT_IN_INVENTORY` once it's gone), and `EXAMINE FOO x` (`INVALID_ARGS`).
 
+### GUI
+Start the server, then `make run-client-gui`. Log in with a valid name (an empty or one-character name is refused in the window without contacting the server; a name already in use shows `ERR 201`). The Taverne image, name and description should appear. Walk the map with the direction buttons: each move should change the image and text, and a direction without an exit should show an error message for a few seconds. Click a button repeatedly until `ERR 750` appears: the direction buttons stay disabled for about a minute and then work again. Stopping the server while the GUI is connected should bring back the login screen.
+
 ### World validation
 Break `world.yaml` on purpose (an exit to a missing room, an exit with an unknown direction such as `northwest`, a quest step targeting a missing NPC, a healer without `heal_dialogue`, a key item with the same name as an item, a `receives_key_items` entry nobody grants, a step grant that is never received back) and check the server refuses to start and lists each problem.
 
@@ -525,19 +588,23 @@ Break `world.yaml` on purpose (an exit to a missing room, an exit with an unknow
 ## Resources
 
 - RFC 42TAP (attached protocol spec) — primary reference for commands, events, and error codes.
-- https://pkg.go.dev/fyne.io/fyne/v2#section-readme
+- Go documentation: [`net`](https://pkg.go.dev/net), [`log/slog`](https://pkg.go.dev/log/slog), [`sync`](https://pkg.go.dev/sync) and [`gopkg.in/yaml.v3`](https://pkg.go.dev/gopkg.in/yaml.v3)
+- Fyne (GUI toolkit): [documentation](https://docs.fyne.io/) and [API reference](https://pkg.go.dev/fyne.io/fyne/v2)
+- Rust crates used by the Rust CLI: [`anyhow`](https://docs.rs/anyhow) and [`ctrlc`](https://docs.rs/ctrlc)
 
 ### AI Usage
 AI usage (Claude), used during development for:
   - Running `golangci-lint` against the server, since it couldn't be installed locally
   - Identifying a softban bypass bug (ban keys included the client's ephemeral port)
-  - Designing the quest data model and response shapes (including a separate `ACCEPT` command that was later merged back into `QUEST`)
+  - Help brainstorming ideas during the designing statge of the quest data model and response shapes
   - Spotting concurrency bugs: a cross-zone mutex-ordering deadlock risk, a self-deadlock when a player disconnects mid-fight, and lock/unlock pairing in the quest-step hooks
   - Spotting a redundant-recursion bug in the map cycle-detection helper
   - Suggesting world-building ideas (room layout, NPCs, items, draft descriptions and dialogue), which were then edited and chosen by hand
   - Simulating fights to help balance enemy stats
   - Talking through the key item design (separating key items from world items, the step-grant rule) and its validation rules, and reviewing the `EXAMINE`, `KEYITEMS` and `quest_items` code
   - Reviewing code changes (e.g. error wrapping in the login path) and checking `world.yaml` for broken references
-  - Drafting and formatting this README
+  - GUI client: explaining Fyne's API and Go concurrency patterns, and reviewing the connection layer, login screen, response parser and game screen
+  - Reviewing the anti-spam rate-limiting code
+  - Drafting and formatting this README, and checking it against the subject and the code
 
 [↑ Back to top](#top)
