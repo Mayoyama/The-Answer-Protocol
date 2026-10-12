@@ -1,43 +1,122 @@
 package main
 
 import (
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
+	"fmt"
+	"image/color"
 	"time"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/widget"
 )
 
 type GameScreen struct {
-	GameContent       *fyne.Container
-	GameScreen        *Screen
-	ZoneNameDescLabel *widget.Label
-	GameErr           *widget.Label
-	DirButtonSet      map[string]*widget.Button
+	GameScreen  *Screen
+	GameContent *fyne.Container
+
+	TopSection    *GSTopSection
+	TopRowContent *fyne.Container
+
+	OverlayTopSection *OverlayTopSection
+
+	OverlayRightSection *OverlayRightSection
+	OverlayRightContent *fyne.Container
+
+	OverlayBottomSection *OverlayBottomSection
+	OverlayBottomContent *fyne.Container
 
 	ErrTimer     *time.Timer
 	LockoutTimer *time.Timer
+
+	GameErr *widget.Label
+}
+
+type GSTopSection struct {
+	HPBar         *widget.ProgressBar
+	ZoneNameLabel *canvas.Text
+	OnlineLabel   *canvas.Text
+	InRoomLabel   *canvas.Text
+}
+
+type RoomStatsWidget struct {
+	PlayersList *widget.Label
+	NPCsList    *widget.Label
+	ExitsList   *widget.Label
+	ItemsList   *widget.Label
+	RoomDesc    *widget.Label
+}
+
+type DPad struct {
+	DirButtonSet map[string]*widget.Button
+}
+
+func buildTopSection() (*GSTopSection, *fyne.Container) {
+	gsTop := &GSTopSection{}
+
+	hpBarLabel := canvas.NewText("HP", color.White)
+	gsTop.HPBar = widget.NewProgressBar()
+	gsTop.HPBar.TextFormatter = func() string {
+		return fmt.Sprintf("%.0f/%.0f", gsTop.HPBar.Value, gsTop.HPBar.Max)
+	}
+
+	hpBarWrap := container.NewGridWrap(fyne.NewSize(160, 20), gsTop.HPBar)
+	hpBarRow := container.NewHBox(container.NewCenter(hpBarLabel), hpBarWrap)
+	hpBarCell := container.NewVBox(layout.NewSpacer(), hpBarRow, layout.NewSpacer())
+
+	gsTop.ZoneNameLabel = canvas.NewText("-", color.White)
+	gsTop.ZoneNameLabel.TextSize = 20
+	gsTop.ZoneNameLabel.TextStyle = fyne.TextStyle{Bold: true}
+	gsTop.ZoneNameLabel.Alignment = fyne.TextAlignCenter
+
+	gsTop.OnlineLabel = canvas.NewText("Online: - ", color.White)
+	gsTop.OnlineLabel.Alignment = fyne.TextAlignTrailing
+	gsTop.InRoomLabel = canvas.NewText("Room: - ", color.White)
+	gsTop.InRoomLabel.Alignment = fyne.TextAlignTrailing
+	onlineContent := container.NewVBox(layout.NewSpacer(), gsTop.OnlineLabel, gsTop.InRoomLabel, layout.NewSpacer())
+
+	topRowContent := container.NewGridWithColumns(3, hpBarCell, gsTop.ZoneNameLabel, onlineContent)
+
+	return gsTop, topRowContent
 }
 
 func buildGameScreen(tapConnRequests chan<- string) *GameScreen {
 	gs := &GameScreen{}
 
+	gs.TopSection, gs.TopRowContent = buildTopSection()
+
 	gs.GameErr = widget.NewLabel("")
 	gs.GameErr.Wrapping = fyne.TextWrapWord
 
-	gs.DirButtonSet = createDirButtonSet(tapConnRequests)
-
-	dPad := container.NewGridWithColumns(
-		3, widget.NewLabel(""), gs.DirButtonSet["north"], gs.DirButtonSet["up"],
-		gs.DirButtonSet["west"], widget.NewLabel(""), gs.DirButtonSet["east"],
-		widget.NewLabel(""), gs.DirButtonSet["south"], gs.DirButtonSet["down"])
+	gameErrorContent := container.NewVBox(layout.NewSpacer(), gs.GameErr, layout.NewSpacer())
 
 	gs.GameScreen = buildNewZoneImage(backdrop_w, backdrop_h)
 
-	gs.ZoneNameDescLabel = widget.NewLabel("")
-	gs.ZoneNameDescLabel.Alignment = fyne.TextAlignCenter
-	gs.ZoneNameDescLabel.Wrapping = fyne.TextWrapWord
+	gs.OverlayTopSection = buildTopOverlay() //, gs.OverlayTopContent
 
-	gs.GameContent = container.NewVBox(gs.GameScreen.zoneStack, gs.ZoneNameDescLabel, dPad, gs.GameErr)
+	gs.OverlayRightSection, gs.OverlayRightContent = buildRightOverlay(tapConnRequests)
+
+	gs.OverlayBottomSection, gs.OverlayBottomContent = buildBottomOverlay(tapConnRequests)
+
+	roomInfoCentered := container.NewCenter(container.NewGridWrap(fyne.NewSize(140, 25), gs.OverlayTopSection.RoomDetailsButton))
+
+	roomInfoButtonBox := container.NewVBox(roomInfoCentered, container.NewCenter(gs.OverlayTopSection.ZoneLookContent))
+
+	overlaytopRow := container.NewBorder(
+		nil, nil,
+		gs.OverlayTopSection.StatsGoldContent,
+		gs.OverlayRightContent,
+		roomInfoButtonBox,
+	)
+
+	bottomContent := container.NewGridWithColumns(3, gs.OverlayBottomSection.TextEntry, layout.NewSpacer(), layout.NewSpacer())
+
+	overlayContent := container.NewBorder(overlaytopRow, bottomContent, gameErrorContent, nil)
+
+	overlayStack := container.NewStack(gs.GameScreen.zoneStack, overlayContent)
+
+	gs.GameContent = container.NewVBox(gs.TopRowContent, overlayStack)
 
 	return gs
 }

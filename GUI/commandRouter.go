@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"fyne.io/fyne/v2"
 	"strings"
 	"time"
@@ -23,6 +22,7 @@ type CommandRouter struct {
 	LoggedIn        bool
 	PendingName     string
 	CurrentZone     string
+	InZoneCount     int
 }
 
 func (cr *CommandRouter) run() {
@@ -91,6 +91,14 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 				cr.Game.displayGameError(err.Error())
 			}
 
+			if err := cr.tc.sendButtonCommandToServer("STATUS"); err != nil {
+				cr.Game.displayGameError(err.Error())
+			}
+
+			if err := cr.tc.sendButtonCommandToServer("GOLD"); err != nil {
+				cr.Game.displayGameError(err.Error())
+			}
+
 			fyne.Do(func() {
 				cr.Win.SetContent(cr.Game.GameContent)
 				cr.Win.Resize(fyne.NewSize(backdrop_w, backdrop_h+element_padding_h))
@@ -117,44 +125,33 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 			cr.handleReplyError(reply)
 
 		case ReplyExamine:
+			cr.handleExamine(reply)
 		case ReplyGold:
+			cr.handleGold(reply)
 		case ReplyGroup:
 		case ReplyIgnore:
 		case ReplyInventory:
 		case ReplyKeyitems:
 		case ReplyLook:
-			roomText := fmt.Sprintf("%s\n%s", reply.Look.Room.Name, reply.Look.Room.Description)
-
-			fyne.Do(func() {
-				cr.Game.ZoneNameDescLabel.SetText(roomText)
-			})
-
-			if reply.Look.Room.ID != cr.CurrentZone {
-				cr.CurrentZone = reply.Look.Room.ID
-				cr.Game.GameScreen.showZoneImage(reply.Look.Room.ID)
-			}
+			cr.handleLook(reply)
 
 		case ReplyPresence:
+			//cr.handlePresence()
 		case ReplyQuest:
 		case ReplyQuests:
 		case ReplyRespawned:
-			if err := cr.tc.sendButtonCommandToServer("LOOK"); err != nil {
-				cr.Game.displayGameError(err.Error())
-			}
+			cr.handleRespawn()
 
 		case ReplyRoomMove:
-			cr.CurrentZone = reply.RoomID
-
-			cr.Game.GameScreen.showZoneImage(reply.RoomID)
-
-			if err := cr.tc.sendButtonCommandToServer("LOOK"); err != nil {
-				cr.Game.displayGameError(err.Error())
-			}
+			cr.handleMove(reply)
 
 		case ReplyServerCount:
+			cr.handleServerCount(reply)
 		case ReplyStatus:
+			cr.handleStatus(reply)
 		case ReplyTakeDrop:
 		case ReplyWho:
+			cr.handleWho(reply)
 		case ReplyOther:
 		default:
 		}

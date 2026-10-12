@@ -38,6 +38,7 @@ type ReplyContent struct {
 	Look        LookParse
 	Who         WhoParse
 	Status      StatusParse
+	HPHeal      HealParse
 	Presence    PresenceParse
 	ServerCount int
 	Quest       SingleQuestParse
@@ -79,6 +80,11 @@ type StatusParse struct {
 	HP     int    `json:"hp"`
 	MaxHP  int    `json:"max_hp"`
 	Status string `json:"status"`
+}
+
+type HealParse struct {
+	HealMessage string `json:"heal_message,omitempty"`
+	HealAmount  int    `json:"heal_amount,omitempty"`
 }
 
 type SingleQuestParse struct {
@@ -217,6 +223,9 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 
 	case toParse == "OK battle ended":
 		return ReplyContent{Type: ReplyBattleEnd, BattleFled: true}, nil
+
+	case strings.HasPrefix(toParse, "OK ") && strings.Contains(toParse, "(You feel a warm glow)"):
+		return ReplyContent{Type: ReplyStatus, HPHeal: HealParse{HealMessage: toUnmarshal}}, nil
 
 	case strings.HasPrefix(toParse, "OK ") && len(strings.Fields(toParse)) == 3 && strings.HasSuffix(toParse, "GOLD"):
 		toAtoi := strings.Fields(toParse)[1]

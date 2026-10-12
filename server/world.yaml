@@ -1,12 +1,12 @@
 world:
   locations:
     taverne:
-      name: The Taverne
+      name: Taverne
       description: A dim, smoky room with a long wooden bar and a crackling hearth.
       exits:
         east: fountain_square
       items:
-        - "item.tankard"
+        - "item.dented_tankard"
         - "item.old_lute"
       spawns:
         - george
@@ -21,8 +21,8 @@ world:
         west: taverne
       items:
         - "item.wanted_poster"
-        - "item.coin_purse"
-        - "item.fountain"
+        - "item.empty_coin_purse"
+        - "item.weathered_fountain"
       spawns:
         - kassandra
 
@@ -45,7 +45,7 @@ world:
         south: old_well
         west: chapel
       items:
-        - "item.gravedigger_shovel"
+        - "item.gravedigger's_shovel"
       spawns:
         - osric
 
@@ -67,7 +67,7 @@ world:
       exits:
         up: old_well
       items:
-        - "item.wall_marks"
+        - "item.etched_wall_marks"
       spawns:
         - cave_bat
 
@@ -79,7 +79,7 @@ world:
         east: mill
         west: smithy
       items:
-        - "item.berthas_stall"
+        - "item.bertha's_stall"
         - "item.notice_board"
       spawns:
         - bertha
@@ -104,7 +104,7 @@ world:
         west: market_square
       items:
         - "item.water_wheel"
-        - "item.wheat_husks"
+        - "item.handful_of_wheat_husks"
       spawns:
         - hilde
 
@@ -121,7 +121,7 @@ world:
 
 
 items:
-  tankard:
+  dented_tankard:
     name: Dented Tankard
     description: A well-used tankard. Smells of dark ale.
     obtainable: true
@@ -136,12 +136,12 @@ items:
     description: "A crude sketch of a hulking, bearded man. 'Wanted for brawling and property damage.'"
     obtainable: false
 
-  coin_purse:
+  empty_coin_purse:
     name: Empty Coin Purse
     description: "A small cloth pouch. Has the initials 'M.S.' embroidered in gold thread."
     obtainable: true
 
-  fountain:
+  weathered_fountain:
     name: Weathered Fountain
     description: A weathered stone fountain, nearly as old as the town itself. Water slowly trickles down its moss-streaked tiers.
     obtainable: false
@@ -156,7 +156,7 @@ items:
     description: A short, white candle, clearly used.
     obtainable: true
 
-  gravedigger_shovel:
+  gravedigger's_shovel:
     name: "Gravedigger's Shovel"
     description: "A sturdy shovel planted upright in the dirt. Osric won't part with it."
     obtainable: false
@@ -171,12 +171,12 @@ items:
     description: An iron winch, stiff with rust. It groans when turned.
     obtainable: false
 
-  wall_marks:
-    name: Scratched Wall Marks
+  etched_wall_marks:
+    name: Etched Wall Marks
     description: A small patch of tally marks scratched into the stone. Someone was clearly counting something.
     obtainable: false
 
-  berthas_stall:
+  bertha's_stall:
     name: "Bertha's Stall"
     description: A wooden stall stacked with crates of turnips. A few of the crates seem to be freshly mended.
     obtainable: false
@@ -201,7 +201,7 @@ items:
     description: A tall timber wheel, darkened by countless seasons spent half-submerged in the river. It complains loudly at every turn, as if it had opinions about the work.
     obtainable: false
 
-  wheat_husks:
+  handful_of_wheat_husks:
     name: Handful of Wheat Husks
     description: Dry, scratchy husks. They get everywhere.
     obtainable: true
@@ -229,7 +229,7 @@ npcs:
     attackable: false
     role: quest giver
     quests:
-    - "bread_for_kassandra"
+    - "a_loaf_for_the_needy"
 
   bertha:
     name: Bertha
@@ -343,7 +343,7 @@ npcs:
 
 
 quests:
-  bread_for_kassandra:
+  a_loaf_for_the_needy:
     name: A loaf for the needy
     description: George seems to need help with his daily chores.
     type: delivery
@@ -352,11 +352,11 @@ quests:
       - talk_to: george
         dialogue: "Hey there! Be a champ and take this [keyitem.Loaf] to Kassandra for me, would you? Thanks!"
         grants_key_items:
-          - "key_item.bread_loaf"
+          - "key_item.loaf_of_bread"
       - talk_to: kassandra
         dialogue: "What's this, a loaf of bread? So George thinks to woo me with crumbs... (looks into your eyes...) Ah, so you're the one... This found its way to me this morning but now it has found its true owner."
         receives_key_items:
-          - "key_item.bread_loaf"
+          - "key_item.loaf_of_bread"
     reward:
       key_item: "key_item.rusty_dagger"
 
@@ -364,7 +364,7 @@ quests:
     name: Something in the Well
     description: Strange sounds rise from the old well at night. Kassandra means to know why.
     type: battle
-    requires: bread_for_kassandra
+    requires: a_loaf_for_the_needy
     steps:
       - talk_to: kassandra
         dialogue: "The well sings at night. They say she mourns those who fell into the dark below. I've always wondered who she really weeps for."
@@ -410,7 +410,7 @@ quests:
 
 
 key_items:
-  bread_loaf:
+  loaf_of_bread:
     name: Loaf of Bread
     description: A loaf of bread, apparently. So hard it would make a respectable bludgeoning weapon.
 

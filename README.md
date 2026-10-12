@@ -23,7 +23,7 @@
 
 ## Description
 
-TAP (The Answer Protocol) is a shared-world, TCP-based text adventure: a Go server hosts a persistent world (rooms, items, NPCs) that multiple clients connect to over a line-based text protocol (RFC 42TAP), with real-time chat, movement, grouping, and item interaction. The server also runs a turn-based combat system, a quest system with chained quests and key items, and a healer NPC. This repo currently contains the **server**, a **CLI client** (in both Go and Rust) and a **GUI client** (Go with Fyne), which is still in progress.
+TAP (The Answer Protocol) is a shared-world, TCP-based text adventure: a Go server hosts a persistent world (rooms, items, NPCs) that multiple clients connect to over a line-based text protocol (RFC 42TAP), with real-time chat, movement, grouping, and item interaction. The server also runs a turn-based combat system, a quest system with chained quests and key items, and a healer NPC. This repo currently contains the **server**, a **CLI client** (in both Go and Rust) and a **GUI client** (Go with Fyne), which is still in progress; its design is documented in [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
 
 [↑ Back to top](#top)
 
@@ -51,7 +51,7 @@ One goroutine per accepted TCP connection (`handleTCPConn`), reading line-by-lin
 Each fight runs in its own goroutine (`processBattle`, `battle.go`). The player's connection goroutine sends one signal per `ATTACK` on an unbuffered channel and waits for that round's result on a second channel, so rounds are strictly sequential and fight state is only touched by the fight goroutine. Ongoing fights are tracked in `OngoingBattles` (keyed by player name, own mutex).
 
 ### Rate limiting / abuse handling
-Implemented in `security.go`: a per-player token-bucket throttle (refill 0.75/sec, capacity 8) gates command frequency; falling below 1 token starts a 1-minute per-player timeout (`ERR 750`). Every input sent during the timeout is answered with a warning that shows the time remaining and counts as a violation; the 10th violation becomes a hard IP-level ban (`ERR 760`, 20 minutes). A host that opens 5 connections within 5 seconds is banned as well (20–30 minutes, chosen at random; `trackConnCount`). Bans are checked as each connection is accepted, before it is handed to `handleTCPConn`. IP bans are keyed on the bare host (port stripped via `net.SplitHostPort`), not `RemoteAddr().String()`, so a client can't dodge a ban by reconnecting on a new ephemeral port. Read-only queries (`LOOK`, `WHO`, `STATUS`, `GOLD`) use a separate bucket (refill 1/sec, capacity 8) so a client that polls them doesn't drain the main one: when it is empty, the query is answered with `ERR 747 EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` and nothing else happens, but about 20 rejected queries within 10 seconds start the same 1-minute timeout. A bare `QUIT` is always answered, and so are queries while the query bucket has tokens, even during a timeout; a query rejected during a timeout counts as a violation. This satisfies RFC §9.4's "chat message frequency" resource-limit recommendation.
+Implemented in `security.go`: a per-player token-bucket throttle (refill 0.75/sec, capacity 8) gates command frequency; falling below 1 token starts a 1-minute per-player timeout (`ERR 750`). Every input sent during the timeout is answered with a warning that shows the time remaining and counts as a violation; the 10th violation becomes a hard IP-level ban (`ERR 760`, 20 minutes). A host that opens 5 connections within 5 seconds is banned as well (20–30 minutes, chosen at random; `trackConnCount`). Bans are checked as each connection is accepted, before it is handed to `handleTCPConn`. IP bans are keyed on the bare host (port stripped via `net.SplitHostPort`), not `RemoteAddr().String()`, so a client can't dodge a ban by reconnecting on a new ephemeral port. Read-only queries (`LOOK`, `WHO`, `STATUS`, `GOLD`) use a separate bucket (refill 1/sec, capacity 8) so a client that polls them doesn't drain the main one: when it is empty, the query is answered with `ERR 747 EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` and nothing else happens. `EXAMINE` has a bucket of its own (refill 0.5/sec, capacity 12, enough for the largest number of names one room can need) that replaces the main bucket for that command; when it is empty, `EXAMINE` is answered with the same `ERR 747`. About 20 rejections within 10 seconds, counted together across the query and `EXAMINE` buckets, start the same 1-minute timeout. A bare `QUIT` is always answered, and so are queries while the query bucket has tokens, even during a timeout; a query rejected during a timeout counts as a violation. `EXAMINE` is not answered during a timeout, like any other command. Since a timeout needs 20 rejections within 10 seconds, a client that stays below that rate keeps receiving `ERR 747` without a penalty; the cost to the server is one short reply per line. This satisfies RFC §9.4's "chat message frequency" resource-limit recommendation.
 
 [↑ Back to top](#top)
 
@@ -75,14 +75,11 @@ The CLI uses the first option: it sends what the user types directly to the serv
 
 ## GUI Client
 
-The GUI client (`GUI/`, Go with Fyne v2.8.1) is still in progress. What works today:
+The GUI client (`GUI/`, Go with Fyne v2.8.1) is still in progress. [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md) is the reference for its design: the layout of the game screen, what each element does, which parts of the subject each one covers, the data refresh plan and the choices behind them. This section only covers what that document doesn't.
 
 - **Login:** a username field and a Connect button. The name is trimmed and checked (2–10 characters, as the server requires) before anything is sent, so a bad name never reaches the server's rate limiter. Server errors (for example `ERR 201 NAME_IN_USE`) are shown under the button, which is enabled again.
-- **Game screen:** after `OK connected` the client sends `LOOK` and shows the room's name and description under the zone image (the ten PNGs in `GUI/assets/` are embedded in the binary and drawn at 1280×720 with nearest-neighbour scaling; a zone without an image shows a plain colour). Six direction buttons (north, west, east, south, up, down) send `MOVE`; the client then sends `LOOK` for the new room.
-- **Errors:** an `ERR` reply is shown below the buttons for three seconds. On `ERR 750` the direction buttons are disabled for the time given in the reply's `Time remaining` text (one minute if there is none), so a player can't pile up violations during a timeout.
 - **Connection loss:** the client returns to the login screen with a "Connection lost" message.
-
-Not implemented yet: chat, inventory, `TAKE`/`DROP`, `TALK`, `ATTACK`, quests, `STATUS`, the player counters and the handling of server events.
+- **Built so far:** the login, and on the game screen the zone image, the room name and description and the direction buttons (with the `ERR 750` lockout). The other elements described in the FSD are not built yet.
 
 **Design.** One router goroutine owns the connection and all connection state; button callbacks only send requests on channels, and widgets are updated through `fyne.Do`. `TAPResponsesParser.go` turns each server line into a typed reply (room move, look, error, chat, ...), so the router never parses strings itself.
 
@@ -123,7 +120,7 @@ Additions beyond the RFC's table, using codes the RFC leaves unassigned or reusi
 | 666 | `INVALID_COMMAND` | Unknown command (malformed-command handling, RFC §9.3) |
 | 666 | `COMMAND_NOT_AVAILABLE_IN_COMBAT` | `MOVE`, `TAKE`, `DROP` and `QUEST` are refused during a fight |
 | 670 | `INVALID_ARGS` / `MISSING_ARGS` | Unexpected or missing arguments |
-| 747 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` | A read-only query (`LOOK`, `WHO`, `STATUS`, `GOLD`) was rejected because its rate limit bucket is empty; no timeout is applied (see Architecture) |
+| 747 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` | A read-only query (`LOOK`, `WHO`, `STATUS`, `GOLD`) or an `EXAMINE` was rejected because its rate limit bucket is empty; no timeout is applied (see Architecture) |
 | 750 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_APPLIED` | Rate limit exceeded; a 1-minute timeout is applied, and replies sent during it end with `Time remaining: <time>` (see Architecture) |
 | 760 | `SOFTBANNED_FROM_SERVER` | IP temporarily banned after repeated violations (see Architecture) |
 | 825 | `INTERNAL_ERROR` | Unexpected server-side failure |
@@ -186,7 +183,7 @@ Example from this server:
 
 ```
 C: QUEST george
-S: OK {"quest_id": "quest.bread_for_kassandra", "description": "George seems to need help with his daily chores.", "reward": {"key_item": "key_item.rusty_dagger"}, "status": "available"}
+S: OK {"quest_id": "quest.a_loaf_for_the_needy", "description": "George seems to need help with his daily chores.", "reward": {"key_item": "key_item.rusty_dagger"}, "status": "available"}
 ```
 
 ### QUESTS command
@@ -195,7 +192,7 @@ The RFC's `QUESTS` example shows `quest_id`, `status` and `progress`. This serve
 
 ```
 C: QUESTS
-S: OK [{"quest_id":"quest.bread_for_kassandra","status":"completed"},{"quest_id":"quest.arms_dealer","status":"active","progress":"1/2","quest_items":"1/2"}]
+S: OK [{"quest_id":"quest.a_loaf_for_the_needy","status":"completed"},{"quest_id":"quest.arms_dealer","status":"active","progress":"1/2","quest_items":"1/2"}]
 ```
 
 ### Custom commands
@@ -218,7 +215,9 @@ RFC 42TAP §6.1.1 and §6.1.2 leave additional combat and quest commands to the 
 EXAMINE <NPC|ITEM|KEYITEM> <name>
 ```
 
-The first word picks what to look up (case-insensitive); the rest is the name, matched by display name, ID or `world.yaml` key, case-insensitively. The scope word is required: `EXAMINE tankard` without it returns `ERR 670 INVALID_ARGS`.
+The first word picks what to look up (case-insensitive); the rest is the name, matched by display name, ID or `world.yaml` key, case-insensitively. The scope word is required: `EXAMINE dented tankard` without it returns `ERR 670 INVALID_ARGS`. `EXAMINE` has its own rate limit bucket (see Architecture).
+
+The reply always contains `name`, `id` (the prefixed ID, e.g. `npc.george`, `item.dented_tankard`, `key_item.small_gem`) and `description`, so a client can match the reply to the IDs it already knows from `LOOK` and `INVENTORY` instead of comparing display names. The fields below depend on the scope.
 
 - `NPC` — the NPC must be in the player's room (`ERR 404 NPC_NOT_FOUND` otherwise). The reply adds `npc_role` (`general`, `questGiver`, `healer` or `enemy`), so a client can tell whether the NPC offers quests.
 - `ITEM` — the item must be in the player's room or inventory (`ERR 404 ITEM_NOT_FOUND` otherwise). The reply adds `obtainable`, which is `true` for items that can be taken; the field is left out for fixed scenery.
@@ -226,11 +225,11 @@ The first word picks what to look up (case-insensitive); the rest is the name, m
 - Any other scope word returns `ERR 670 INVALID_ARGS`.
 
 ```
-C: EXAMINE ITEM tankard
-S: OK {"name":"Dented Tankard","description":"A well-used tankard. Smells of dark ale.","obtainable":true}
+C: EXAMINE ITEM dented tankard
+S: OK {"name":"Dented Tankard","id":"item.dented_tankard","description":"A well-used tankard. Smells of dark ale.","obtainable":true}
 
 C: EXAMINE NPC george
-S: OK {"name":"George","description":"The tavern keeper, wiping down the same mug for the tenth time.","npc_role":"questGiver"}
+S: OK {"name":"George","id":"npc.george","description":"The tavern keeper, wiping down the same mug for the tenth time.","npc_role":"questGiver"}
 ```
 
 #### `KEYITEMS`
@@ -369,7 +368,7 @@ Example (`world.yaml`) — a two-quest chain, where the second quest only become
 
 ```yaml
 quests:
-  bread_for_kassandra:
+  a_loaf_for_the_needy:
     name: A loaf for the needy
     description: George seems to need help with his daily chores.
     type: delivery
@@ -378,11 +377,11 @@ quests:
       - talk_to: george
         dialogue: "Hey there! Be a champ and take this [keyitem.Loaf] to Kassandra for me, would you? Thanks!"
         grants_key_items:
-          - "key_item.bread_loaf"
+          - "key_item.loaf_of_bread"
       - talk_to: kassandra
         dialogue: "What's this, a loaf of bread? So George thinks to woo me with crumbs... ..."
         receives_key_items:
-          - "key_item.bread_loaf"
+          - "key_item.loaf_of_bread"
     reward:
       key_item: "key_item.rusty_dagger"
 
@@ -390,7 +389,7 @@ quests:
     name: Something in the Well
     description: Strange sounds rise from the old well at night. Kassandra means to know why.
     type: battle
-    requires: bread_for_kassandra
+    requires: a_loaf_for_the_needy
     steps:
       - talk_to: kassandra
         dialogue: "The well sings at night. ..."
@@ -421,7 +420,7 @@ quests:
       key_item: "key_item.ornate_dagger"
 
 key_items:
-  bread_loaf:
+  loaf_of_bread:
     name: Loaf of Bread
     description: A loaf of bread, apparently. ...
 
@@ -511,7 +510,7 @@ grep -E 'ERR (747|750|760)' server.log              # only rate-limit and ban ev
 
 The last command shows only rate-limiting and ban events:
 
-- **Command flooding:** `ERR 747` (a query was rejected because its bucket is empty) and `ERR 750` (a timeout was applied, or the player kept sending input during one) appear in the `message` of `WARN` lines, with the `player` and `remote`; `time_remaining` shows how long a timeout still lasts. `"reason":"query bucket flooding"` marks a player who got a timeout for flooding queries.
+- **Command flooding:** `ERR 747` (a query or an `EXAMINE` was rejected because its bucket is empty) and `ERR 750` (a timeout was applied, or the player kept sending input during one) appear in the `message` of `WARN` lines, with the `player` and `remote`; `time_remaining` shows how long a timeout still lasts. `"reason":"query bucket flooding"` and `"reason":"'examine' bucket flooding"` mark a player who got a timeout for flooding queries or `EXAMINE`.
 - **Rapid connections and repeated violations:** `ERR 760 SOFTBANNED_FROM_SERVER` is logged as the `msg` of a `WARN` line with the address (`remote`). Several `ERR 750` lines for one `player` followed by `ERR 760` show a client that ignored its timeout.
 
 [↑ Back to top](#top)
@@ -575,10 +574,10 @@ A full walkthrough of the quest chain:
 *A Lesson in Manners* works the same way with Bertha in the Market Square and the Barbarian in the Fallow Field.
 
 ### EXAMINE
-`EXAMINE ITEM tankard` in the Taverne (also after `TAKE tankard`), `EXAMINE NPC george` (shows `npc_role`), `EXAMINE KEYITEM rusty dagger` before and after handing it to Brannoc (`ITEM_NOT_IN_INVENTORY` once it's gone), and `EXAMINE FOO x` (`INVALID_ARGS`).
+`EXAMINE ITEM dented tankard` in the Taverne (also after `TAKE dented tankard`), `EXAMINE NPC george` (shows `npc_role`), `EXAMINE KEYITEM rusty dagger` before and after handing it to Brannoc (`ITEM_NOT_IN_INVENTORY` once it's gone), and `EXAMINE FOO x` (`INVALID_ARGS`). To check the rate limit, paste about 15 `EXAMINE NPC george` lines at once, ending with a newline: the first 12 are answered and the rest get `ERR 747`.
 
 ### GUI
-Start the server, then `make run-client-gui`. Log in with a valid name (an empty or one-character name is refused in the window without contacting the server; a name already in use shows `ERR 201`). The Taverne image, name and description should appear. Walk the map with the direction buttons: each move should change the image and text, and a direction without an exit should show an error message for a few seconds. Click a button repeatedly until `ERR 750` appears: the direction buttons stay disabled for about a minute and then work again. Stopping the server while the GUI is connected should bring back the login screen.
+Start the server, then `make run-client-gui`. A name that is empty or one character long is refused in the window without contacting the server, and a name that is already in use shows `ERR 201`. Stopping the server while the GUI is connected should bring back the login screen. For the game screen, compare the client with [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md), which lists every element and the behaviour expected from it.
 
 ### World validation
 Break `world.yaml` on purpose (an exit to a missing room, an exit with an unknown direction such as `northwest`, a quest step targeting a missing NPC, a healer without `heal_dialogue`, a key item with the same name as an item, a `receives_key_items` entry nobody grants, a step grant that is never received back) and check the server refuses to start and lists each problem.
@@ -588,6 +587,7 @@ Break `world.yaml` on purpose (an exit to a missing room, an exit with an unknow
 ## Resources
 
 - RFC 42TAP (attached protocol spec) — primary reference for commands, events, and error codes.
+- [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md) (in this repository) — design record for the GUI client: layout, elements and decisions.
 - Go documentation: [`net`](https://pkg.go.dev/net), [`log/slog`](https://pkg.go.dev/log/slog), [`sync`](https://pkg.go.dev/sync) and [`gopkg.in/yaml.v3`](https://pkg.go.dev/gopkg.in/yaml.v3)
 - Fyne (GUI toolkit): [documentation](https://docs.fyne.io/) and [API reference](https://pkg.go.dev/fyne.io/fyne/v2)
 - Rust crates used by the Rust CLI: [`anyhow`](https://docs.rs/anyhow) and [`ctrlc`](https://docs.rs/ctrlc)

@@ -1,24 +1,8 @@
 package main
 
 import (
-	"strings"
-	"unicode"
-	"unicode/utf8"
-
 	"fyne.io/fyne/v2/widget"
 )
-
-func Capitalize(s string) string {
-	if s == "" {
-		return ""
-	}
-
-	firstChar, size := utf8.DecodeRuneInString(s)
-
-	capitalized := string(unicode.ToUpper(firstChar)) + strings.ToLower(s[size:])
-
-	return capitalized
-}
 
 func createDirButtonSet(requests chan<- string) map[string]*widget.Button {
 	newSet := make(map[string]*widget.Button)
@@ -33,7 +17,25 @@ func createDirButtonSet(requests chan<- string) map[string]*widget.Button {
 }
 
 func createDirectionButton(direction string, requests chan<- string) *widget.Button {
-	dirString := Capitalize(direction)
+	var dirString string
+
+	switch direction {
+	case "north":
+		dirString = "N"
+	case "south":
+		dirString = "S"
+	case "east":
+		dirString = "E"
+	case "west":
+		dirString = "W"
+	case "up":
+		dirString = "↑"
+	case "down":
+		dirString = "↓"
+	default:
+		dirString = "?"
+	}
+
 	dirButton := widget.NewButton(dirString, func() {
 		select {
 		case requests <- "MOVE " + direction:
