@@ -8,8 +8,28 @@ import (
 	"time"
 )
 
+func (cr *CommandRouter) handleChat(reply ReplyContent) {
+	chatString := fmt.Sprintf("%s (%s) >> %s", Capitalize(reply.Chat.Scope), reply.Chat.Sender, reply.Chat.Message)
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.ChatWindow.addLine(chatString)
+	})
+}
+
 func (cr *CommandRouter) handleExamine(reply ReplyContent) {
-	// send info to log when done
+	examineString := fmt.Sprintf("Name: %s. Description: %s.", reply.Examine.Name, reply.Examine.Description)
+
+	if reply.Examine.Obtainable {
+		examineString += " Obtainable: Yes."
+	}
+
+	if reply.Examine.NPCRole != "" {
+		examineString += fmt.Sprintf(" NPC Role: %s.", SplitSnakeCase(reply.Examine.NPCRole))
+	}
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(examineString)
+	})
 }
 
 func (cr *CommandRouter) handleGold(reply ReplyContent) {

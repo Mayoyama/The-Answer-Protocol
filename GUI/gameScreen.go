@@ -110,9 +110,7 @@ func buildGameScreen(tapConnRequests chan<- string) *GameScreen {
 		roomInfoButtonBox,
 	)
 
-	bottomContent := container.NewGridWithColumns(3, gs.OverlayBottomSection.TextEntry, layout.NewSpacer(), layout.NewSpacer())
-
-	overlayContent := container.NewBorder(overlaytopRow, bottomContent, gameErrorContent, nil)
+	overlayContent := container.NewBorder(overlaytopRow, gs.OverlayBottomContent, gameErrorContent, nil)
 
 	overlayStack := container.NewStack(gs.GameScreen.zoneStack, overlayContent)
 

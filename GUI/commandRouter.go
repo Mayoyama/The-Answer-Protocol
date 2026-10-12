@@ -121,6 +121,7 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 		case ReplyAttack:
 		case ReplyBattleEnd:
 		case ReplyChat:
+			cr.handleChat(reply)
 		case ReplyError:
 			cr.handleReplyError(reply)
 

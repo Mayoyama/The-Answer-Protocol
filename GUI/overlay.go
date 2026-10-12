@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"strings"
 
@@ -28,7 +29,9 @@ type OverlayRightSection struct {
 }
 
 type OverlayBottomSection struct {
-	TextEntry *widget.Entry
+	ChatWindow *ChatWindow
+	LogWindow  *ChatWindow
+	TextEntry  *widget.Entry
 }
 
 func buildTopOverlay() *OverlayTopSection {
@@ -126,6 +129,8 @@ func buildRightOverlay(tapConnRequests chan<- string) (*OverlayRightSection, *fy
 
 func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *fyne.Container) {
 	oBS := &OverlayBottomSection{}
+	oBS.ChatWindow = buildChatWindow(350, 250)
+	oBS.LogWindow = buildChatWindow(350, 250)
 
 	oBS.TextEntry = widget.NewEntry()
 	oBS.TextEntry.SetPlaceHolder("TAP >>")
@@ -137,8 +142,19 @@ func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *
 			return
 		}
 
+		cmdParts := strings.SplitN(cmd, " ", 3)
+		cmdUpper := strings.ToUpper(cmdParts[0])
+
 		select {
 		case tapConnRequests <- cmd:
+			if len(cmdParts) > 2 && cmdUpper == "CHAT" {
+				scope := Capitalize(cmdParts[1])
+				if scope == "Room" || scope == "Global" || scope == "Group" {
+					toChatWin := fmt.Sprintf("%s (YOU) << %s", scope, cmdParts[2])
+					oBS.ChatWindow.addLine(toChatWin)
+				}
+
+			}
 		default:
 			// TODO: show "buffer full" on GameErr (the section does not have gs; decide how to reach it)
 		}
@@ -146,7 +162,17 @@ func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *
 		oBS.TextEntry.SetText((""))
 	}
 
-	content := container.NewVBox(oBS.TextEntry)
+	chatWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: 125})
+	logWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: 125})
+
+	chatStack := container.NewStack(chatWinBacking, oBS.ChatWindow.Scroll)
+	logStack := container.NewStack(logWinBacking, oBS.LogWindow.Scroll)
+
+	chatWindows := container.NewHBox(chatStack, logStack)
+
+	textBox := container.NewGridWithColumns(2, oBS.TextEntry, layout.NewSpacer())
+
+	content := container.NewVBox(chatWindows, textBox)
 
 	return oBS, content
 }
