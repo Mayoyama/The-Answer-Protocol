@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -32,10 +33,28 @@ var (
 // processConn validates a username and registers the connecting player.
 func processConn(conn net.Conn, args string, player **Player) (LoginStatus, error) {
 	username := strings.TrimSpace(args)
+	toLowerName := strings.ToLower(username)
+	forbiddenPrefixes := []string{"<", "{", "[", "(", "npc.", "item.", "zone.", "key_item."}
+	forbiddenNames := []string{"OK", "ERR", "EVT", "ADMIN", "SERVER", "SYSTEM", "STAFF"}
+
+	for _, reserved := range forbiddenNames {
+		if strings.EqualFold(username, reserved) {
+			return LoginFailed, InvCharInNameErr
+		}
+	}
+
+	if slices.ContainsFunc(forbiddenPrefixes, func(s string) bool {
+		return strings.HasPrefix(toLowerName, s)
+	}) {
+		return LoginFailed, InvCharInNameErr
+	}
 
 	if strings.ContainsFunc(username, func(r rune) bool {
 		return !unicode.IsPrint(r)
 	}) {
+		return LoginFailed, InvCharInNameErr
+
+	} else if strings.ContainsRune(username, ' ') {
 		return LoginFailed, InvCharInNameErr
 
 	} else if utf8.RuneCountInString(username) > 10 {
@@ -192,11 +211,13 @@ func handleTCPConn(conn net.Conn) {
 	}
 
 	var (
-		loginState     LoginStatus
-		player         *Player
-		lastTokenTick  time.Time
-		chanceCount    float64
-		deadlineFailed bool
+		loginState         LoginStatus
+		player             *Player
+		lastTokenTick      time.Time
+		chanceCount        float64
+		deadlineFailed     bool
+		oversizedLineCount int
+		OLCTimeStamp       time.Time
 	)
 
 	scantask := bufio.NewScanner(conn)
@@ -218,6 +239,33 @@ func handleTCPConn(conn net.Conn) {
 		}
 
 		line := scantask.Text()
+
+		if time.Now().After(OLCTimeStamp.Add(time.Minute * 5)) {
+			oversizedLineCount = 0
+		}
+
+		if len(line) > 1024 {
+			oversizedLineCount++
+
+			if oversizedLineCount == 1 {
+				OLCTimeStamp = time.Now()
+				slog.Warn(MessageTooLongErr.Error(), "remote", conn.RemoteAddr().String())
+			}
+
+			if oversizedLineCount < 5 {
+				_, _ = fmt.Fprintln(conn, MessageTooLongErr.Error())
+			}
+
+			if oversizedLineCount >= 5 {
+				_, _ = fmt.Fprintln(conn, MessageTooLongErr.Error()+": 5TH_STRIKE_CLOSING_CONNECTION")
+				slog.Warn(MessageTooLongErr.Error()+": 5TH_STRIKE_CLOSING_CONNECTION", "remote", conn.RemoteAddr().String())
+
+				break
+			}
+
+			continue
+		}
+
 		parts := strings.SplitN(line, " ", 2)
 
 		var args string

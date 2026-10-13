@@ -49,6 +49,7 @@ var (
 	CommandInCombatErr = ProtocolError{Code: 666, ErrorMessage: "COMMAND_NOT_AVAILABLE_IN_COMBAT"}
 	InvalidArgsErr     = ProtocolError{Code: 670, ErrorMessage: "INVALID_ARGS"}
 	MissingArgsErr     = ProtocolError{Code: 670, ErrorMessage: "MISSING_ARGS"}
+	MessageTooLongErr  = ProtocolError{Code: 675, ErrorMessage: "MESSAGE_TOO_LONG"}
 )
 
 // Rate-limit and ban errors.

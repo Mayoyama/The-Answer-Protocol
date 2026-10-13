@@ -45,7 +45,7 @@ func IDToLabel(id string) string {
 	name := id
 
 	name = strings.TrimPrefix(name, "item.")
-	name = strings.TrimPrefix(name, "keyitem.")
+	name = strings.TrimPrefix(name, "key_item.")
 	name = strings.TrimPrefix(name, "npc.")
 
 	return SplitSnakeCase(name)

@@ -14,6 +14,7 @@ type CommandRouter struct {
 	LoginRequests   chan string
 	TapConnRequests chan string
 	QuitRequest     chan struct{}
+	Quitting        bool
 
 	tc              *tapConnection
 	ServerResponses chan string
@@ -109,6 +110,28 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 		}
 
 	} else {
+		if cr.Quitting && trimmedRes == "OK bye" {
+			cr.tc.shutdown()
+
+			cr.tc = nil
+			cr.ServerResponses = nil
+			cr.ServerErrs = nil
+			cr.GotGreeting = false
+			cr.LoggedIn = false
+			cr.Quitting = false
+			cr.PendingName = ""
+			cr.CurrentZone = ""
+
+			cr.Game.displayGameError("OK bye")
+			time.Sleep(time.Millisecond * 2800)
+
+			fyne.Do(func() {
+				cr.Win.Close()
+			})
+
+			return
+		}
+
 		reply, err := ParseServerReply(response)
 
 		if err != nil {
@@ -135,6 +158,9 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 		case ReplyKeyitems:
 		case ReplyLook:
 			cr.handleLook(reply)
+
+		case ReplyNPCDialogue:
+			cr.handleNPCDialogue(reply)
 
 		case ReplyPresence:
 			//cr.handlePresence()
@@ -166,6 +192,10 @@ func (cr *CommandRouter) handleTapConnRequest(cmd string) {
 		return
 	}
 
+	if strings.ToUpper(cmd) == "QUIT" {
+		cr.Quitting = true
+	}
+
 	if err := cr.tc.sendButtonCommandToServer(cmd); err != nil {
 		cr.Game.displayGameError(err.Error())
 	}
@@ -187,6 +217,7 @@ func (cr *CommandRouter) handleServerErr(err error) {
 	cr.ServerErrs = nil
 	cr.GotGreeting = false
 	cr.LoggedIn = false
+	cr.Quitting = false
 	cr.PendingName = ""
 	cr.CurrentZone = ""
 }

@@ -29,6 +29,7 @@ const (
 	ReplyRespawned
 	ReplyRoomMove
 	ReplyChat
+	ReplyNPCDialogue
 	ReplyOther
 	ReplyError
 )
@@ -54,6 +55,7 @@ type ReplyContent struct {
 	BattleFled  bool
 	Respawned   string
 	RoomID      string
+	NPCText     string
 	Err         ErrParse
 }
 
@@ -143,7 +145,7 @@ type TakeDropItemParse struct {
 
 type GroupActionParse struct {
 	Action string
-	byWho  string
+	ByWho  string
 }
 
 type ChatParse struct {
@@ -176,8 +178,10 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 	switch {
 	case toParse == "OK []", toParse == "OK":
 		return ReplyContent{Type: ReplyIgnore}, nil
+
 	case strings.HasPrefix(toParse, "OK room="):
 		roomID := strings.TrimPrefix(toParse, "OK room=")
+
 		return ReplyContent{
 			Type:   ReplyRoomMove,
 			RoomID: roomID,
@@ -292,10 +296,15 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 
 		return ReplyContent{Type: ReplyChat, Chat: ChatParse{Scope: parts[1], Sender: parts[3], Message: msg}}, nil
 
+	case strings.HasPrefix(toParse, "OK group=NEWPT-"):
+		ldr := strings.TrimPrefix(toParse, "OK group=NEWPT-")
+
+		return ReplyContent{Type: ReplyGroup, Group: GroupActionParse{Action: "CREATE", ByWho: ldr}}, nil
+
 	case strings.HasPrefix(toParse, "OK group=PT-"):
 		ldr := strings.TrimPrefix(toParse, "OK group=PT-")
 
-		return ReplyContent{Type: ReplyGroup, Group: GroupActionParse{Action: "CREATE", byWho: ldr}}, nil
+		return ReplyContent{Type: ReplyGroup, Group: GroupActionParse{Action: "JOIN", ByWho: ldr}}, nil
 
 	case strings.HasPrefix(toParse, "EVT GROUP "):
 		parts := strings.SplitN(toParse, " ", 4)
@@ -304,7 +313,7 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 			return ReplyContent{}, errors.New("malformed group event: " + toParse)
 		}
 
-		return ReplyContent{Type: ReplyGroup, Group: GroupActionParse{Action: parts[2], byWho: parts[3]}}, nil
+		return ReplyContent{Type: ReplyGroup, Group: GroupActionParse{Action: parts[2], ByWho: parts[3]}}, nil
 
 	case strings.HasPrefix(toParse, "OK {\"quest_id\""):
 		if err := json.Unmarshal([]byte(toUnmarshal), &quest); err != nil {
@@ -333,6 +342,9 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 		}
 
 		return ReplyContent{Type: ReplyKeyitems, KeyItems: keyitems}, nil
+
+	case strings.HasPrefix(toParse, "OK "):
+		return ReplyContent{Type: ReplyNPCDialogue, NPCText: toUnmarshal}, nil
 
 	case strings.HasPrefix(toParse, "ERR "):
 		parts := strings.SplitN(toParse, " ", 3)

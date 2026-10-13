@@ -58,8 +58,8 @@ func (p *Player) handleTimeoutBucket(timestamp time.Time) bool {
 }
 
 func (p *Player) handleQueryBucket(timestamp time.Time) bool {
-	const queryRefill = 1
-	const queryMaxCapacity = 8
+	const queryRefill = 1.2
+	const queryMaxCapacity = 10
 
 	p.PlayerMu.Lock()
 	defer p.PlayerMu.Unlock()

@@ -1,6 +1,6 @@
 # TAP GUI — HUD Design Record
 
-*42 school group project "The Answer Protocol" (TAP): design decisions for the GUI client's game screen. Last updated 2026-10-12.*
+*42 school group project "The Answer Protocol" (TAP): design decisions for the GUI client's game screen. Last updated 2026-10-13.*
 
 Legend: **[R]** required by the subject PDF or RFC 42TAP · **[O]** optional, not mentioned in the subject but allowed · **[ext]** uses a server extension (a command not in the RFC) · **TBD** not decided yet.
 
@@ -57,7 +57,7 @@ Positions come from the original sketch plus the revisions in section 13, and wi
 |---|---|---|---|
 | ① | HP bar | Text row, left. Current/max HP. Updated from STATUS, ATTACK replies, and refreshes after healer TALK, fights and respawn. | [O] |
 | ② | Room name | Text row, centre. Current room name from LOOK. | [R] (room details) |
-| ③ | `Online: #` | Text row, hard right. Players on the server, from `EVT STATS players=` (sent after login and on every login/logout). | [R] counter |
+| ③ | `Online: #` | Text row, hard right. Players on the server, from `EVT STATS players=` (sent after login and on every login/logout). A WHO reply also updates it. | [R] counter |
 | ④ | Status label | On the image, top-left. Player status (healthy / weakened / injured / engaged / unknown). Displays the server's own status string. Reduces the need to press STATUS. | [O] |
 | ⑤ | Gold | On the image, under the status. Gold amount (GOLD command). | [O][ext] |
 | ⑥ | Room details button | Centred. Shows/hides the zone info box ⑦. | [O] |
@@ -67,7 +67,7 @@ Positions come from the original sketch plus the revisions in section 13, and wi
 | ⑩ | Key items | Right side, above the inventory. Same visual style as the inventory (label plus a list that grows and shrinks). Shows "Feature not available" if the server doesn't support it. | [O][ext] |
 | ⑪ | Inventory | The "Inventory" label is always visible. The list under it grows and shrinks as items are taken and dropped; an empty inventory shows only the label and one blank row. At most 4 rows are shown, then a scroll bar appears. | [R] |
 | ⑫ | Info buttons | LOOK, WHO, STATUS, QUESTS: small buttons stacked vertically, left of the inventory. Results are formatted log messages (section 5). | [R] buttons |
-| ⑬ | Chat window | Bottom left. Other players' chat and NPC fight announcements (section 4). | [R] |
+| ⑬ | Chat window | Bottom left. Chat messages (including the player's own), NPC dialogue and NPC fight announcements (section 4). | [R] |
 | ⑭ | Log window | Next to the chat window. Everything else (section 4). | [R] |
 | ⑮ | Error pop-up | Just above the chat window. Shows an error, then fades after 3 seconds. Errors are also written to the log. | [O] |
 | ⑯ | Manual command entry | Narrow field under the chat windows (section 9). | [O] |
@@ -82,10 +82,11 @@ Positions come from the original sketch plus the revisions in section 13, and wi
 ## 4. Chat window and log window
 
 - Two separate windows, no tabs. The PDF requires the chat view (Global / Room / Group) to be separate from the log view.
-- **Chat** lines carry a scope prefix, for example `GLOBAL (pname) >> message`. NPC fight announcements arrive as `EVT ROOM CHAT` events from a sender like `<<npc.name>>` and appear here too.
-- Players see only **other** players' chat messages (the server doesn't send a message back to its sender).
-- The **log** holds everything else: TALK dialogue, ATTACK results, quest and step messages, errors, and the formatted results of the four info buttons.
-- Both windows scroll so players can read the history. New messages scroll into view **only when the player is already at the bottom**.
+- **Chat** lines carry the scope and the sender, for example `Global (pname) >> message`. NPC fight announcements arrive as `EVT ROOM CHAT` events from a sender like `<<npc.name>>` and appear here too.
+- The server does not send a chat message back to its sender, so the **player's own message** is added to the chat window by the client as soon as it is sent, as `Global (YOU) << message`. This gives the immediate feedback players know from online RPGs. If the server rejects the message (for example not in a group, rate limit), the error is shown as for any other command.
+- **NPC dialogue** (TALK replies, including a healer's heal line) also goes to the chat window.
+- The **log** holds everything else: ATTACK results, quest and step messages, errors, and the formatted results of the four info buttons.
+- Both windows scroll so players can read the history. New messages scroll into view **only when the player is already at the bottom**. Each window keeps the last 250 lines.
 - Errors go to the log, plus the 3-second pop-up (⑮).
 
 ---
@@ -108,7 +109,7 @@ Main entries: **Talk, Attack, Quest, Group, Chat, Take, Drop**, plus **Flee** du
 - **Group:** expands into CREATE, INVITE, JOIN, LEAVE. INVITE and JOIN always use typed input.
 - **Chat:** pick a scope (Global / Room / Group), then type the message in the dialogue box. Group chat outside a group simply shows the server's error (ERR 401 NOT_IN_GROUP).
 - Menu entries send the item/NPC ID. The server accepts either IDs or display names, and the manual entry accepts both as well.
-- **Entry labels:** derived from the IDs that LOOK returns, on the client only. The exact prefixes `item.`, `npc.` and `keyitem.` are removed (a `.` elsewhere in a name is kept, since other servers may use one), and the rest is converted from snake case to words. There are no EXAMINE requests and no cache, so labels behave the same on every server.
+- **Entry labels:** derived from the IDs that LOOK returns, on the client only. The exact prefixes `item.`, `npc.` and `key_item.` are removed (a `.` elsewhere in a name is kept, since other servers may use one), and the rest is converted from snake case to words. There are no EXAMINE requests and no cache, so labels behave the same on every server.
 - **Room changes:** the menu is unavailable after a MOVE until the LOOK reply arrives. It always unlocks again on an error or a dropped connection.
 - **Flee** uses the server's FLEE command. During a battle the server rejects MOVE, TAKE, DROP and QUEST.
 - **Rate-limit lockout (ERR 750):** every widget that sends a non-query command is disabled for the lockout, including the manual entry, because commands sent during a timeout count as strikes towards a longer ban.
@@ -141,7 +142,8 @@ Extensions not in the RFC: GOLD, KEYITEMS, EXAMINE, FLEE and the JSON reply of W
 ## 9. Manual command entry (⑯)
 
 - A permanent, narrow field under the chat windows for players who prefer typing commands (also useful for testing).
-- Typed commands are handled like button commands: the same room-change lock, flee tracking, LOOK/STATUS mark and lockout. A typed `QUIT` uses the same graceful quit path as the Quit button.
+- Typed commands are handled like button commands: the same room-change lock, flee tracking, LOOK/STATUS mark and lockout. A typed `QUIT` closes the program, like the Quit button.
+- A typed chat command (`CHAT <scope> <text>`) also adds the player's own line to the chat window (section 4), the same way as a message sent from the chat menu.
 
 ---
 
@@ -164,7 +166,6 @@ Extensions not in the RFC: GOLD, KEYITEMS, EXAMINE, FLEE and the JSON reply of W
 
 ## 12. Open design points
 
-- Expiry length and implementation of the LOOK/STATUS mark (section 5).
 - LOOK poll interval and its start/stop conditions (section 10).
 
 ---
@@ -189,3 +190,8 @@ Revision (2026-10-12):
 
 - NPC and item labels come from the LOOK IDs (prefix removed, snake case converted) instead of EXAMINE lookups with a cache; the EXAMINE rate-limit bucket was removed from the server.
 - The room counter is adjusted by presence events instead of re-sending LOOK.
+- The player's own chat message is added to the chat window when sent (previously only other players' messages were shown), so there is a visible confirmation that it went out.
+
+Revision (2026-10-13):
+
+- NPC dialogue (TALK replies) goes to the chat window instead of the log.

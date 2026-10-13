@@ -9,6 +9,13 @@ import (
 )
 
 func (cr *CommandRouter) handleChat(reply ReplyContent) {
+	var sender string
+
+	if strings.HasPrefix(reply.Chat.Sender, "<<npc.") && strings.HasSuffix(reply.Chat.Sender, ">>") {
+		nameOnly := strings.TrimSuffix(strings.TrimPrefix(reply.Chat.Sender, "<<"), ">>")
+		sender = "<<" + IDToLabel(nameOnly)
+	}
+
 	chatString := fmt.Sprintf("%s (%s) >> %s", Capitalize(reply.Chat.Scope), reply.Chat.Sender, reply.Chat.Message)
 
 	fyne.Do(func() {
@@ -96,6 +103,10 @@ func (cr *CommandRouter) handleMove(reply ReplyContent) {
 	}
 }
 
+func (cr *CommandRouter) handleNPCDialogue(reply ReplyContent) {
+
+}
+
 func (cr *CommandRouter) handleRespawn() {
 	if err := cr.tc.sendButtonCommandToServer("LOOK"); err != nil {
 		cr.Game.displayGameError(err.Error())
@@ -108,6 +119,7 @@ func (cr *CommandRouter) handleRespawn() {
 
 func (cr *CommandRouter) handleReplyError(reply ReplyContent) {
 	cr.Game.displayGameError(reply.Err.Text)
+	cr.Quitting = false
 
 	if reply.Err.Code == 750 {
 		lockDuration := time.Minute
@@ -153,7 +165,10 @@ func (cr *CommandRouter) handleServerCount(reply ReplyContent) {
 
 func (cr *CommandRouter) handleStatus(reply ReplyContent) {
 	if reply.HPHeal.HealMessage != "" {
-		// TODO: write reply.HPHeal.HealMessage to the log once the log window exists
+
+		fyne.Do(func() {
+			cr.Game.OverlayBottomSection.ChatWindow.addLine(reply.HPHeal.HealMessage)
+		})
 
 		if err := cr.tc.sendButtonCommandToServer("STATUS"); err != nil {
 			cr.Game.displayGameError(err.Error())

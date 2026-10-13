@@ -162,7 +162,7 @@ func handleLook(player *Player, loginState *LoginStatus) {
 	var exits = make(map[string]string)
 
 	for dir, target := range area.Exits {
-		exits[dir.String()] = target
+		exits[dir.String()] = "zone." + target
 	}
 
 	roomInfo := RoomInfo{

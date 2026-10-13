@@ -117,7 +117,7 @@ func (p *Player) itemDrop(itemName string) (string, error) {
 	i, ok := resolveItem(itemName)
 
 	if !ok {
-		return "", ItemNotFoundErr
+		return "", NotInInvErr
 	}
 
 	currLoc := p.getZoneID()

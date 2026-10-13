@@ -51,7 +51,7 @@ One goroutine per accepted TCP connection (`handleTCPConn`), reading line-by-lin
 Each fight runs in its own goroutine (`processBattle`, `battle.go`). The player's connection goroutine sends one signal per `ATTACK` on an unbuffered channel and waits for that round's result on a second channel, so rounds are strictly sequential and fight state is only touched by the fight goroutine. Ongoing fights are tracked in `OngoingBattles` (keyed by player name, own mutex).
 
 ### Rate limiting / abuse handling
-Implemented in `security.go`: a per-player token-bucket throttle (refill 0.75/sec, capacity 8) gates command frequency; falling below 1 token starts a 1-minute per-player timeout (`ERR 750`). Every input sent during the timeout is answered with a warning that shows the time remaining and counts as a violation; the 10th violation becomes a hard IP-level ban (`ERR 760`, 20 minutes). A host that opens 5 connections within 5 seconds is banned as well (20–30 minutes, chosen at random; `trackConnCount`). Bans are checked as each connection is accepted, before it is handed to `handleTCPConn`. IP bans are keyed on the bare host (port stripped via `net.SplitHostPort`), not `RemoteAddr().String()`, so a client can't dodge a ban by reconnecting on a new ephemeral port. Read-only queries (`LOOK`, `WHO`, `STATUS`, `GOLD`) use a separate bucket (refill 1/sec, capacity 8) so a client that polls them doesn't drain the main one: when it is empty, the query is answered with `ERR 747 EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` and nothing else happens. `EXAMINE` has a bucket of its own (refill 0.5/sec, capacity 12, enough for the largest number of names one room can need) that replaces the main bucket for that command; when it is empty, `EXAMINE` is answered with the same `ERR 747`. About 20 rejections within 10 seconds, counted together across the query and `EXAMINE` buckets, start the same 1-minute timeout. A bare `QUIT` is always answered, and so are queries while the query bucket has tokens, even during a timeout; a query rejected during a timeout counts as a violation. `EXAMINE` is not answered during a timeout, like any other command. Since a timeout needs 20 rejections within 10 seconds, a client that stays below that rate keeps receiving `ERR 747` without a penalty; the cost to the server is one short reply per line. This satisfies RFC §9.4's "chat message frequency" resource-limit recommendation.
+Implemented in `security.go`: a per-player token-bucket throttle (refill 0.75/sec, capacity 8) gates command frequency; falling below 1 token starts a 1-minute per-player timeout (`ERR 750`). Every input sent during the timeout is answered with a warning that shows the time remaining and counts as a violation; the 10th violation becomes a hard IP-level ban (`ERR 760`, 20 minutes). A host that opens 5 connections within 5 seconds is banned as well (20–30 minutes, chosen at random; `trackConnCount`). Bans are checked as each connection is accepted, before it is handed to `handleTCPConn`. IP bans are keyed on the bare host (port stripped via `net.SplitHostPort`), not `RemoteAddr().String()`, so a client can't dodge a ban by reconnecting on a new ephemeral port. Read-only queries (`LOOK`, `WHO`, `STATUS`, `GOLD`) use a separate bucket (refill 1/sec, capacity 8) so a client that polls them doesn't drain the main one: when it is empty, the query is answered with `ERR 747 EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` and nothing else happens. About 20 rejections within 10 seconds start the same 1-minute timeout. A bare `QUIT` is always answered, and so are queries while the query bucket has tokens, even during a timeout; a query rejected during a timeout counts as a violation. Since a timeout needs 20 rejections within 10 seconds, a client that stays below that rate keeps receiving `ERR 747` without a penalty; the cost to the server is one short reply per line. To keep the log readable, a rejected query is logged only for the first rejection in a window and then for every 5th one; the reply is still sent every time. Any line longer than 1024 bytes (the limit RFC §9.4 recommends) is rejected with `ERR 675 MESSAGE_TOO_LONG` before it reaches the login or command handling, so it does not use up tokens; the first one is logged, and the 5th within 5 minutes closes the connection. A line over 64 KB hits the scanner's limit and closes the connection at once. This satisfies RFC §9.4's "chat message frequency" resource-limit recommendation.
 
 [↑ Back to top](#top)
 
@@ -79,7 +79,7 @@ The GUI client (`GUI/`, Go with Fyne v2.8.1) is still in progress. [`TAP_GUI_HUD
 
 - **Login:** a username field and a Connect button. The name is trimmed and checked (2–10 characters, as the server requires) before anything is sent, so a bad name never reaches the server's rate limiter. Server errors (for example `ERR 201 NAME_IN_USE`) are shown under the button, which is enabled again.
 - **Connection loss:** the client returns to the login screen with a "Connection lost" message.
-- **Built so far:** the login, and on the game screen the zone image, the room name and description and the direction buttons (with the `ERR 750` lockout). The other elements described in the FSD are not built yet.
+- **Built so far:** the login, and on the game screen the zone image; the top row (HP bar, room name, `Online` and `Room` counters); the status and gold labels; the Room Details button with the zone info box (description, players, NPCs, exits, items); the direction buttons (with the `ERR 750` lockout); the chat and log windows; and the manual command entry. After login the client sends `LOOK`, `STATUS` and `GOLD` to fill the screen. The other elements described in the FSD are not built yet.
 
 **Design.** One router goroutine owns the connection and all connection state; button callbacks only send requests on channels, and widgets are updated through `fyne.Do`. `TAPResponsesParser.go` turns each server line into a typed reply (room move, look, error, chat, ...), so the router never parses strings itself.
 
@@ -112,7 +112,7 @@ Additions beyond the RFC's table, using codes the RFC leaves unassigned or reusi
 | Code | Message | Meaning |
 |---|---|---|
 | 202 | `NAME_TOO_LONG` / `NAME_TOO_SHORT` | Username outside 2–10 characters (the RFC only defines `201` for name collisions) |
-| 204 | `INVALID_CHAR_IN_NAME` | Username contains non-printable characters (RFC §9.2 says servers should reject or safely handle control characters) |
+| 204 | `INVALID_CHAR_IN_NAME` | Username contains non-printable characters (RFC §9.2 says servers should reject or safely handle control characters), a space, a reserved name (`OK`, `ERR`, `EVT`, `ADMIN`, `SERVER`, `SYSTEM`, `STAFF`; case-insensitive) or one of the prefixes `<`, `{`, `[`, `(`, `npc.`, `item.`, `zone.`, `key_item.`. A player name must not be able to imitate a server line or ID: some server lines begin with a name (`<name> receives …`), and event lines are split on spaces. |
 | 401 | `NOT_GROUP_LEADER` | `GROUP INVITE`/`JOIN` restricted to the group leader (same category as the RFC's `NOT_IN_GROUP`) |
 | 403 | `ITEM_NOT_OBTAINABLE` | `TAKE` on fixed scenery that can't be picked up |
 | 404 | `PLAYER_NOT_FOUND` | Invited player doesn't exist |
@@ -120,7 +120,8 @@ Additions beyond the RFC's table, using codes the RFC leaves unassigned or reusi
 | 666 | `INVALID_COMMAND` | Unknown command (malformed-command handling, RFC §9.3) |
 | 666 | `COMMAND_NOT_AVAILABLE_IN_COMBAT` | `MOVE`, `TAKE`, `DROP` and `QUEST` are refused during a fight |
 | 670 | `INVALID_ARGS` / `MISSING_ARGS` | Unexpected or missing arguments |
-| 747 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` | A read-only query (`LOOK`, `WHO`, `STATUS`, `GOLD`) or an `EXAMINE` was rejected because its rate limit bucket is empty; no timeout is applied (see Architecture) |
+| 675 | `MESSAGE_TOO_LONG` | A line longer than 1024 bytes (the limit RFC §9.4 recommends) was rejected; the 5th such line within 5 minutes closes the connection (see Architecture) |
+| 747 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` | A read-only query (`LOOK`, `WHO`, `STATUS`, `GOLD`) was rejected because the query bucket is empty; no timeout is applied (see Architecture) |
 | 750 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_APPLIED` | Rate limit exceeded; a 1-minute timeout is applied, and replies sent during it end with `Time remaining: <time>` (see Architecture) |
 | 760 | `SOFTBANNED_FROM_SERVER` | IP temporarily banned after repeated violations (see Architecture) |
 | 825 | `INTERNAL_ERROR` | Unexpected server-side failure |
@@ -195,6 +196,20 @@ C: QUESTS
 S: OK [{"quest_id":"quest.a_loaf_for_the_needy","status":"completed"},{"quest_id":"quest.arms_dealer","status":"active","progress":"1/2","quest_items":"1/2"}]
 ```
 
+### GROUP command
+
+The RFC gives `OK group=<group-id>` as the reply to `GROUP CREATE` and `GROUP JOIN` but doesn't define the ID format. This server's group ID is `PT-<leader name>`. `GROUP JOIN <leader>` replies `OK group=PT-<leader>`. `GROUP CREATE` replies `OK group=NEWPT-<leader>`: the `NEW` prefix is a deviation that lets a client tell a created group from a joined one, since both replies otherwise look the same. The group itself is still `PT-<leader>`.
+
+```
+C: GROUP CREATE
+S: OK group=NEWPT-alice
+
+C: GROUP JOIN alice
+S: OK group=PT-alice
+```
+
+`GROUP LEAVE` replies with a bare `OK`, as the RFC defines. Because the reply carries no other information, the server then sends the player `EVT GROUP LEAVE <own name>`. A leader leaving disbands the group: the leader gets this event too, and every other member gets `EVT GROUP LEAVE` for the leader and for themselves.
+
 ### Custom commands
 
 RFC 42TAP §6.1.1 and §6.1.2 leave additional combat and quest commands to the implementer. This server adds the following commands; all of them use the standard `OK` / `ERR <code> <MESSAGE>` replies.
@@ -215,9 +230,9 @@ RFC 42TAP §6.1.1 and §6.1.2 leave additional combat and quest commands to the 
 EXAMINE <NPC|ITEM|KEYITEM> <name>
 ```
 
-The first word picks what to look up (case-insensitive); the rest is the name, matched by display name, ID or `world.yaml` key, case-insensitively. The scope word is required: `EXAMINE dented tankard` without it returns `ERR 670 INVALID_ARGS`. `EXAMINE` has its own rate limit bucket (see Architecture).
+The first word picks what to look up (case-insensitive); the rest is the name, matched by display name, ID or `world.yaml` key, case-insensitively. The scope word is required: `EXAMINE dented tankard` without it returns `ERR 670 INVALID_ARGS`.
 
-The reply always contains `name`, `id` (the prefixed ID, e.g. `npc.george`, `item.dented_tankard`, `key_item.small_gem`) and `description`, so a client can match the reply to the IDs it already knows from `LOOK` and `INVENTORY` instead of comparing display names. The fields below depend on the scope.
+The reply always contains `name` and `description`. The fields below depend on the scope.
 
 - `NPC` — the NPC must be in the player's room (`ERR 404 NPC_NOT_FOUND` otherwise). The reply adds `npc_role` (`general`, `questGiver`, `healer` or `enemy`), so a client can tell whether the NPC offers quests.
 - `ITEM` — the item must be in the player's room or inventory (`ERR 404 ITEM_NOT_FOUND` otherwise). The reply adds `obtainable`, which is `true` for items that can be taken; the field is left out for fixed scenery.
@@ -226,10 +241,10 @@ The reply always contains `name`, `id` (the prefixed ID, e.g. `npc.george`, `ite
 
 ```
 C: EXAMINE ITEM dented tankard
-S: OK {"name":"Dented Tankard","id":"item.dented_tankard","description":"A well-used tankard. Smells of dark ale.","obtainable":true}
+S: OK {"name":"Dented Tankard","description":"A well-used tankard. Smells of dark ale.","obtainable":true}
 
 C: EXAMINE NPC george
-S: OK {"name":"George","id":"npc.george","description":"The tavern keeper, wiping down the same mug for the tenth time.","npc_role":"questGiver"}
+S: OK {"name":"George","description":"The tavern keeper, wiping down the same mug for the tenth time.","npc_role":"questGiver"}
 ```
 
 #### `KEYITEMS`
@@ -251,7 +266,7 @@ All RFC 42TAP events are implemented and pushed to clients as they happen:
 | `EVT ROOM CHAT <username> <message>` | `CHAT ROOM`, to the other players in the room |
 | `EVT GLOBAL CHAT <username> <message>` | `CHAT GLOBAL`, to all other online players |
 | `EVT GROUP INVITE <leader>` | A group leader invites the player |
-| `EVT GROUP JOIN <username>` / `EVT GROUP LEAVE <username>` | A player joins or leaves the group, to its members |
+| `EVT GROUP JOIN <username>` / `EVT GROUP LEAVE <username>` | A player joins or leaves the group, to its members. The player who leaves also receives `EVT GROUP LEAVE` with their own name (after the `OK`), as members do when a group is disbanded, so a client can tell they are out of the group |
 | `EVT GROUP CHAT <username> <message>` | `CHAT GROUP`, to the other group members |
 | `EVT STATS players=<count>` | The online player count changes (login or disconnect), to every online player. A player who logs in receives it right after `OK connected`, so the login reply always comes first. |
 
@@ -264,12 +279,13 @@ All RFC 42TAP events are implemented and pushed to clients as they happen:
 - Quest progress and reward messages are extra plain-text lines sent after the command's `OK` reply (see Quest System).
 - When a quest step needs key items the player doesn't hold yet, `TALK` replies with that step's `missing_items_dialogue` in the normal `OK` reply.
 - When a quest step gives the player key items, their names are appended to the step's dialogue in the same `OK` reply: `OK <dialogue> (You receive Loaf of Bread)`.
+- Known edge case: NPC dialogue is sent as plain `OK <dialogue>`, so a client recognises it by elimination: it is any `OK` line that doesn't match another reply's shape (JSON, `key=value`, or a fixed word such as `bye`). NPC dialogue in `world.yaml` that imitates one of those shapes can be misread by a client. This is treated as the world author's responsibility for writing correct NPC dialogue, not as a coding issue.
 
 ### Case-insensitive input
 Command names are case-insensitive, as RFC §4.2 requires: `handleTCPConn` uppercases the command once before passing it to `handleLogin` or `commandDispatch`, so `look`, `Look` and `LOOK` all work. The same applies to `CHAT` scopes (`chatDispatcher`), `GROUP` subcommands (`groupFuncDispatcher`) and `MOVE` directions (see Movement directions below). Item and NPC names are matched case-insensitively with `strings.EqualFold`.
 
 ### Movement directions
-Exits use a fixed set of six directions: `north`, `east`, `south`, `west`, `up` and `down` (the `ZoneMoveDirection` enum in `zones.go`). `parseDirection` converts a direction word to the enum case-insensitively. `MOVE` with any other word, or with a direction the current room has no exit for, returns `ERR 301 NO_EXIT`. `LOOK` still reports exits as plain strings (`"exits": {"north": "chapel"}`), so clients only ever see these six words.
+Exits use a fixed set of six directions: `north`, `east`, `south`, `west`, `up` and `down` (the `ZoneMoveDirection` enum in `zones.go`). `parseDirection` converts a direction word to the enum case-insensitively. `MOVE` with any other word, or with a direction the current room has no exit for, returns `ERR 301 NO_EXIT`. `LOOK` still reports exits as plain strings, with the target room's ID as the value, in the same form as `room.id` and `OK room=` (`"exits": {"north": "zone.chapel"}`), so clients only ever see these six words.
 
 ### Item system
 Dynamic item system (unique instances, no duplication on TAKE, made available again on DROP, lookup by ID or display name via `strings.EqualFold`) is implemented in `items.go`. Key items are kept outside this system (see Quest System → Key items), so they never conflict with item uniqueness.
@@ -505,12 +521,13 @@ The server logs to stderr, so redirect it to keep a file and read it with `tail`
 make run-server 2> server.log                       # in one terminal
 tail -f server.log                                  # in another: follow the log live
 grep '"level":"WARN"' server.log                    # only warnings
-grep -E 'ERR (747|750|760)' server.log              # only rate-limit and ban events
+grep -E 'ERR (675|747|750|760)' server.log          # only rate-limit, line-length and ban events
 ```
 
 The last command shows only rate-limiting and ban events:
 
-- **Command flooding:** `ERR 747` (a query or an `EXAMINE` was rejected because its bucket is empty) and `ERR 750` (a timeout was applied, or the player kept sending input during one) appear in the `message` of `WARN` lines, with the `player` and `remote`; `time_remaining` shows how long a timeout still lasts. `"reason":"query bucket flooding"` and `"reason":"'examine' bucket flooding"` mark a player who got a timeout for flooding queries or `EXAMINE`.
+- **Command flooding:** `ERR 747` (a query was rejected because the query bucket is empty) and `ERR 750` (a timeout was applied, or the player kept sending input during one) appear in the `message` of `WARN` lines, with the `player` and `remote`; `time_remaining` shows how long a timeout still lasts. `"reason":"query bucket flooding"` marks a player who got a timeout for flooding queries. To keep the log small, `ERR 747` is logged only for the first rejection in a window and then for every 5th one.
+- **Oversized lines:** `ERR 675 MESSAGE_TOO_LONG` is logged for the first line over 1024 bytes, and a second entry ending in `5TH_STRIKE_CLOSING_CONNECTION` is logged when the connection is closed.
 - **Rapid connections and repeated violations:** `ERR 760 SOFTBANNED_FROM_SERVER` is logged as the `msg` of a `WARN` line with the address (`remote`). Several `ERR 750` lines for one `player` followed by `ERR 760` show a client that ignored its timeout.
 
 [↑ Back to top](#top)
@@ -574,7 +591,7 @@ A full walkthrough of the quest chain:
 *A Lesson in Manners* works the same way with Bertha in the Market Square and the Barbarian in the Fallow Field.
 
 ### EXAMINE
-`EXAMINE ITEM dented tankard` in the Taverne (also after `TAKE dented tankard`), `EXAMINE NPC george` (shows `npc_role`), `EXAMINE KEYITEM rusty dagger` before and after handing it to Brannoc (`ITEM_NOT_IN_INVENTORY` once it's gone), and `EXAMINE FOO x` (`INVALID_ARGS`). To check the rate limit, paste about 15 `EXAMINE NPC george` lines at once, ending with a newline: the first 12 are answered and the rest get `ERR 747`.
+`EXAMINE ITEM dented tankard` in the Taverne (also after `TAKE dented tankard`), `EXAMINE NPC george` (shows `npc_role`), `EXAMINE KEYITEM rusty dagger` before and after handing it to Brannoc (`ITEM_NOT_IN_INVENTORY` once it's gone), and `EXAMINE FOO x` (`INVALID_ARGS`).
 
 ### GUI
 Start the server, then `make run-client-gui`. A name that is empty or one character long is refused in the window without contacting the server, and a name that is already in use shows `ERR 201`. Stopping the server while the GUI is connected should bring back the login screen. For the game screen, compare the client with [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md), which lists every element and the behaviour expected from it.

@@ -35,8 +35,8 @@ func groupFuncDispatcher(subcommand, subargs string, player *Player) {
 			return
 		}
 
-		_, _ = fmt.Fprintln(player.Conn, "OK group="+group.GroupID)
-		slog.Info("SYS_MESSAGE", "player", pname, "message", "OK group="+group.GroupID, "command", "GROUP", "subcommand", subcommand)
+		_, _ = fmt.Fprintln(player.Conn, "OK group=NEW"+group.GroupID)
+		slog.Info("SYS_MESSAGE", "player", pname, "message", "OK group=NEW"+group.GroupID, "command", "GROUP", "subcommand", subcommand)
 
 	case "INVITE":
 		onlinePlayersMu.Lock()
@@ -80,7 +80,7 @@ func groupFuncDispatcher(subcommand, subargs string, player *Player) {
 			return
 		}
 
-		_, _ = fmt.Fprintln(player.Conn, "OK")
+		_, _ = fmt.Fprintln(player.Conn, "OK group=PT-"+subargs)
 		slog.Info("SYS_MESSAGE", "player", pname, "message", "OK", "command", "GROUP", "subcommand", subcommand)
 
 	case "LEAVE":
@@ -103,6 +103,9 @@ func groupFuncDispatcher(subcommand, subargs string, player *Player) {
 
 		_, _ = fmt.Fprintln(player.Conn, "OK")
 		slog.Info("SYS_MESSAGE", "player", pname, "message", "OK", "command", "GROUP", "subcommand", subcommand)
+
+		_, _ = fmt.Fprintln(player.Conn, EvtPartyLeave(pname))
+		slog.Info("SYS_MESSAGE", "player", pname, "message", EvtPartyLeave(pname))
 
 	default:
 		_, _ = fmt.Fprintln(player.Conn, InvalidCommandErr.Error())

@@ -64,7 +64,14 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 
 			} else {
 				_, _ = fmt.Fprintln(player.Conn, InputSpamWarn.Error())
-				slog.Warn("SYS_MESSAGE", "remote", player.Conn.RemoteAddr().String(), "player", pname, "message", InputSpamWarn.Error())
+
+				player.PlayerMu.Lock()
+				rejectCount := player.RejectionCount
+				player.PlayerMu.Unlock()
+
+				if rejectCount == 1 || rejectCount%5 == 0 {
+					slog.Warn("SYS_MESSAGE", "remote", player.Conn.RemoteAddr().String(), "player", pname, "message", InputSpamWarn.Error())
+				}
 			}
 
 			return

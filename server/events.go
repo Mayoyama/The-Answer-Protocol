@@ -49,5 +49,5 @@ func EvtPlayerCount(count int) string {
 
 // EvtPlayerRespawn formats the custom respawn event sent after a lost fight.
 func EvtPlayerRespawn() string {
-	return fmt.Sprintf("EVT RESPAWN room=%s", respawnZone)
+	return fmt.Sprintf("EVT RESPAWN room=%s", "zone."+respawnZone)
 }
