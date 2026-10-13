@@ -12,6 +12,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+const WindowRectAlpha uint8 = 135
+
 type OverlayTopSection struct {
 	RoomDetailsButton *widget.Button
 	GoldLabel         *widget.Label
@@ -22,6 +24,11 @@ type OverlayTopSection struct {
 	ZoneLookContent *fyne.Container
 
 	DPad *DPad
+
+	BattleLog        *ChatWindow
+	BattleLogContent *fyne.Container
+	BattleSwapStack  *fyne.Container
+	BoxWasVisible    bool //must only be read/written in a fyne.Do statement
 }
 
 type OverlayRightSection struct {
@@ -35,6 +42,11 @@ type OverlayBottomSection struct {
 }
 
 func buildTopOverlay() *OverlayTopSection {
+	const (
+		battleLogWidth  float32 = 760
+		battleLogHeight float32 = 250
+	)
+
 	oTS := &OverlayTopSection{}
 
 	oTS.PlayerStatusLabel = widget.NewLabel("Status: -")
@@ -90,10 +102,20 @@ func buildTopOverlay() *OverlayTopSection {
 	oTS.RoomStatsInfo.RoomDesc.Wrapping = fyne.TextWrapWord
 
 	roomStatsGrid := container.NewGridWithColumns(4, playersColumn, npcsColumn, exitsColumn, itemsColumn)
-	infoBg := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: 120})
+	infoBg := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})
 	infoBg.CornerRadius = 6
 	infoContent := container.NewVBox(oTS.RoomStatsInfo.RoomDesc, roomStatsGrid)
 	oTS.ZoneLookContent = container.NewStack(infoBg, infoContent)
+
+	oTS.BattleLog - buildChatWindow(battleLogWidth, battleLogWidth)
+
+	battleBg := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})
+	battleBg.CornerRadius = 6
+
+	oTS.BattleLogContent = container.NewStack(battleBg, oTS.BattleLog.Scroll)
+	oTS.BattleLogContent.Hide()
+
+	oTS.BattleSwapStack = container.NewStack(oTS.ZoneLookContent, oTS.BattleLogContent)
 
 	oTS.RoomDetailsButton = widget.NewButton("Room Details", func() {
 		if oTS.ZoneLookContent.Visible() {
@@ -162,8 +184,8 @@ func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *
 		oBS.TextEntry.SetText((""))
 	}
 
-	chatWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: 125})
-	logWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: 125})
+	chatWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})
+	logWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})
 
 	chatStack := container.NewStack(chatWinBacking, oBS.ChatWindow.Scroll)
 	logStack := container.NewStack(logWinBacking, oBS.LogWindow.Scroll)

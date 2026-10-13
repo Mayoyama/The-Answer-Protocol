@@ -22,6 +22,7 @@ func main() {
 	loginRequests := make(chan string, 1)
 	tapConnRequests := make(chan string, 16)
 	quitRequest := make(chan struct{}, 1)
+	battleScreenTimeout := make(chan struct{}, 1)
 
 	win.SetCloseIntercept(func() {
 		select {
@@ -45,12 +46,13 @@ func main() {
 	win.Resize(fyne.NewSize(login_win_w, login_win_h))
 
 	cr := &CommandRouter{
-		Win:             win,
-		Login:           login,
-		Game:            game,
-		LoginRequests:   loginRequests,
-		TapConnRequests: tapConnRequests,
-		QuitRequest:     quitRequest,
+		Win:                 win,
+		Login:               login,
+		Game:                game,
+		LoginRequests:       loginRequests,
+		TapConnRequests:     tapConnRequests,
+		QuitRequest:         quitRequest,
+		battleScreenTimeout: battleScreenTimeout,
 	}
 
 	go cr.run()

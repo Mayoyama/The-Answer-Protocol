@@ -16,14 +16,21 @@ type CommandRouter struct {
 	QuitRequest     chan struct{}
 	Quitting        bool
 
-	tc              *tapConnection
-	ServerResponses chan string
-	ServerErrs      chan error
-	GotGreeting     bool
-	LoggedIn        bool
-	PendingName     string
-	CurrentZone     string
-	InZoneCount     int
+	tc               *tapConnection
+	ServerResponses  chan string
+	ServerErrs       chan error
+	GotGreeting      bool
+	LoggedIn         bool
+	PendingName      string
+	PlayerUsername   string
+	AttackTargetName string
+	CurrentZone      string
+	InZoneCount      int
+
+	InBattle            bool
+	LastAttack          time.Time
+	BattleTimer         *time.Timer
+	battleScreenTimeout chan struct{}
 }
 
 func (cr *CommandRouter) run() {
@@ -39,6 +46,8 @@ func (cr *CommandRouter) run() {
 			cr.handleServerErr(err)
 		case <-cr.QuitRequest:
 			cr.handleQuit()
+		case <-cr.battleScreenTimeout:
+			cr.handleBattleScreenTimeout()
 
 			return
 		}
@@ -65,6 +74,8 @@ func (cr *CommandRouter) handleLoginRequest(name string) {
 			cr.Login.showErr(err.Error())
 		}
 
+		cr.PlayerUsername = name
+
 	} else {
 		cr.PendingName = name
 	}
@@ -81,6 +92,8 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 				if err := cr.tc.sendButtonCommandToServer("CONNECT " + cr.PendingName); err != nil {
 					cr.Login.showErr(err.Error())
 				}
+
+				cr.PlayerUsername = cr.PendingName
 			}
 
 			cr.PendingName = ""
@@ -121,6 +134,8 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 			cr.Quitting = false
 			cr.PendingName = ""
 			cr.CurrentZone = ""
+			cr.PlayerUsername = ""
+			cr.AttackTargetName = ""
 
 			cr.Game.displayGameError("OK bye")
 			time.Sleep(time.Millisecond * 2800)
@@ -142,6 +157,7 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 
 		switch reply.Type {
 		case ReplyAttack:
+			cr.handleAttack(reply)
 		case ReplyBattleEnd:
 		case ReplyChat:
 			cr.handleChat(reply)
@@ -196,6 +212,12 @@ func (cr *CommandRouter) handleTapConnRequest(cmd string) {
 		cr.Quitting = true
 	}
 
+	cmdParts := strings.SplitN(cmd, " ", 2)
+
+	if len(cmdParts) > 1 && strings.EqualFold(cmdParts[0], "attack") {
+		cr.AttackTargetName = strings.TrimSpace(cmdParts[1])
+	}
+
 	if err := cr.tc.sendButtonCommandToServer(cmd); err != nil {
 		cr.Game.displayGameError(err.Error())
 	}
@@ -220,6 +242,8 @@ func (cr *CommandRouter) handleServerErr(err error) {
 	cr.Quitting = false
 	cr.PendingName = ""
 	cr.CurrentZone = ""
+	cr.PlayerUsername = ""
+	cr.AttackTargetName = ""
 }
 
 func (cr *CommandRouter) handleQuit() {

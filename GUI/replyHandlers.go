@@ -13,10 +13,13 @@ func (cr *CommandRouter) handleChat(reply ReplyContent) {
 
 	if strings.HasPrefix(reply.Chat.Sender, "<<npc.") && strings.HasSuffix(reply.Chat.Sender, ">>") {
 		nameOnly := strings.TrimSuffix(strings.TrimPrefix(reply.Chat.Sender, "<<"), ">>")
-		sender = "<<" + IDToLabel(nameOnly)
+		sender = "<<" + IDToLabel(nameOnly) + ">>"
+
+	} else {
+		sender = reply.Chat.Sender
 	}
 
-	chatString := fmt.Sprintf("%s (%s) >> %s", Capitalize(reply.Chat.Scope), reply.Chat.Sender, reply.Chat.Message)
+	chatString := fmt.Sprintf("%s (%s) >> %s", Capitalize(reply.Chat.Scope), sender, reply.Chat.Message)
 
 	fyne.Do(func() {
 		cr.Game.OverlayBottomSection.ChatWindow.addLine(chatString)
@@ -192,12 +195,13 @@ func (cr *CommandRouter) handleStatus(reply ReplyContent) {
 }
 
 func (cr *CommandRouter) handleWho(reply ReplyContent) {
-	//whoString := fmt.Sprintf("In zone: %v. Online Count: %d.", reply.Who.Room, reply.Who.Server)
+	whoString := fmt.Sprintf("In zone: %v. Online Count: %d.", reply.Who.Room, reply.Who.Server)
 	onlineCount := fmt.Sprintf("Online: %d ", reply.Who.Server)
 
 	fyne.Do(func() {
 		cr.Game.TopSection.OnlineLabel.Text = onlineCount
 		cr.Game.TopSection.OnlineLabel.Refresh()
-		// TODO: write whoString to the log once the log window exists
+		cr.Game.OverlayBottomSection.LogWindow.addLine(whoString)
+
 	})
 }
