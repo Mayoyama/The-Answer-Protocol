@@ -99,7 +99,9 @@ func buildGameScreen(tapConnRequests chan<- string) *GameScreen {
 
 	gs.OverlayBottomSection, gs.OverlayBottomContent = buildBottomOverlay(tapConnRequests)
 
-	roomInfoCentered := container.NewCenter(container.NewGridWrap(fyne.NewSize(140, 25), gs.OverlayTopSection.RoomDetailsButton))
+	roomInfoCentered := container.NewCenter(container.NewHBox(
+		container.NewGridWrap(fyne.NewSize(140, 25), gs.OverlayTopSection.RoomDetailsButton),
+		container.NewGridWrap(fyne.NewSize(140, 25), gs.OverlayTopSection.BattleLogButton)))
 
 	roomInfoButtonBox := container.NewVBox(roomInfoCentered, container.NewCenter(gs.OverlayTopSection.BattleSwapStack))
 

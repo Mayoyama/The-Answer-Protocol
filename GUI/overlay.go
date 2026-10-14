@@ -12,10 +12,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-const WindowRectAlpha uint8 = 135
-
 type OverlayTopSection struct {
 	RoomDetailsButton *widget.Button
+	BattleLogButton   *widget.Button
 	GoldLabel         *widget.Label
 	PlayerStatusLabel *widget.Label
 	StatsGoldContent  *fyne.Container
@@ -28,7 +27,6 @@ type OverlayTopSection struct {
 	BattleLog        *ChatWindow
 	BattleLogContent *fyne.Container
 	BattleSwapStack  *fyne.Container
-	BoxWasVisible    bool //must only be read/written in a fyne.Do statement
 }
 
 type OverlayRightSection struct {
@@ -40,6 +38,8 @@ type OverlayBottomSection struct {
 	LogWindow  *ChatWindow
 	TextEntry  *widget.Entry
 }
+
+const WindowRectAlpha uint8 = 135
 
 func buildTopOverlay() *OverlayTopSection {
 	const (
@@ -107,7 +107,7 @@ func buildTopOverlay() *OverlayTopSection {
 	infoContent := container.NewVBox(oTS.RoomStatsInfo.RoomDesc, roomStatsGrid)
 	oTS.ZoneLookContent = container.NewStack(infoBg, infoContent)
 
-	oTS.BattleLog - buildChatWindow(battleLogWidth, battleLogWidth)
+	oTS.BattleLog = buildChatWindow(battleLogWidth, battleLogHeight)
 
 	battleBg := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})
 	battleBg.CornerRadius = 6
@@ -122,10 +122,24 @@ func buildTopOverlay() *OverlayTopSection {
 			oTS.ZoneLookContent.Hide()
 
 		} else {
+			oTS.BattleLogContent.Hide()
 			oTS.ZoneLookContent.Show()
 		}
 
-		oTS.ZoneLookContent.Refresh()
+		oTS.BattleSwapStack.Refresh()
+	})
+
+	oTS.BattleLogButton = widget.NewButton("Battle Log", func() {
+		if oTS.BattleLogContent.Visible() {
+			oTS.BattleLogContent.Hide()
+
+		} else {
+			oTS.ZoneLookContent.Hide()
+			oTS.BattleLogContent.Show()
+		}
+
+		oTS.BattleSwapStack.Refresh()
+		oTS.BattleLog.Scroll.ScrollToBottom()
 	})
 
 	return oTS

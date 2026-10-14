@@ -63,7 +63,6 @@ var (
 var (
 	InternalErr = ProtocolError{Code: 825, ErrorMessage: "INTERNAL_ERROR"}
 	JSONErr     = ProtocolError{Code: 880, ErrorMessage: "JSON_ERROR"}
-	YAMLErr     = ProtocolError{Code: 878, ErrorMessage: "YAML_ERROR"}
 )
 
 // Connection errors.

@@ -55,7 +55,9 @@ type ReplyContent struct {
 	BattleFled  bool
 	Respawned   string
 	RoomID      string
+	NPCName     string
 	NPCText     string
+	NPCHeal     bool
 	Err         ErrParse
 }
 
@@ -154,6 +156,11 @@ type ChatParse struct {
 	Message string
 }
 
+type TalkParse struct {
+	NPC      string `json:"npc"`
+	Dialogue string `json:"dialogue"`
+}
+
 type PresenceParse struct {
 	Direction string
 	Who       string
@@ -161,7 +168,7 @@ type PresenceParse struct {
 
 func ParseServerReply(reply string) (ReplyContent, error) {
 	toParse := strings.TrimSpace(reply)
-	toUnmarshal := strings.TrimPrefix(toParse, "OK ")
+	toUnmarshal := strings.TrimSpace(strings.TrimPrefix(toParse, "OK "))
 
 	var (
 		look      LookParse
@@ -176,7 +183,7 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 	)
 
 	switch {
-	case toParse == "OK []", toParse == "OK":
+	case toParse == "OK []", toParse == "OK [ ]", toParse == "OK":
 		return ReplyContent{Type: ReplyIgnore}, nil
 
 	case strings.HasPrefix(toParse, "OK room="):
@@ -187,7 +194,7 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 			RoomID: roomID,
 		}, nil
 
-	case strings.HasPrefix(toParse, "OK {\"room\""):
+	case strings.HasPrefix(toParse, "OK {\"room\"") || strings.HasPrefix(toParse, "OK { \"room\""):
 		if strings.Contains(toParse, "\"server\"") {
 
 			if err := json.Unmarshal([]byte(toUnmarshal), &who); err != nil {
@@ -204,21 +211,21 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 			return ReplyContent{Type: ReplyLook, Look: look}, nil
 		}
 
-	case strings.HasPrefix(toParse, "OK {\"hp\""):
+	case strings.HasPrefix(toParse, "OK {\"hp\"") || strings.HasPrefix(toParse, "OK { \"hp\""):
 		if err := json.Unmarshal([]byte(toUnmarshal), &status); err != nil {
 			return ReplyContent{}, err
 		}
 
 		return ReplyContent{Type: ReplyStatus, Status: status}, nil
 
-	case strings.HasPrefix(toParse, "OK {\"name\""):
+	case strings.HasPrefix(toParse, "OK {\"name\"") || strings.HasPrefix(toParse, "OK { \"name\""):
 		if err := json.Unmarshal([]byte(toUnmarshal), &examine); err != nil {
 			return ReplyContent{}, err
 		}
 
 		return ReplyContent{Type: ReplyExamine, Examine: examine}, nil
 
-	case strings.HasPrefix(toParse, "OK {\"attack"):
+	case strings.HasPrefix(toParse, "OK {\"attack") || strings.HasPrefix(toParse, "OK { \"attack"):
 		if err := json.Unmarshal([]byte(toUnmarshal), &attack); err != nil {
 			return ReplyContent{}, err
 		}
@@ -227,9 +234,6 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 
 	case toParse == "OK battle ended":
 		return ReplyContent{Type: ReplyBattleEnd, BattleFled: true}, nil
-
-	case strings.HasPrefix(toParse, "OK ") && strings.Contains(toParse, "(You feel a warm glow)"):
-		return ReplyContent{Type: ReplyStatus, HPHeal: HealParse{HealMessage: toUnmarshal}}, nil
 
 	case strings.HasPrefix(toParse, "OK ") && len(strings.Fields(toParse)) == 3 && strings.HasSuffix(toParse, "GOLD"):
 		toAtoi := strings.Fields(toParse)[1]
@@ -315,28 +319,28 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 
 		return ReplyContent{Type: ReplyGroup, Group: GroupActionParse{Action: parts[2], ByWho: parts[3]}}, nil
 
-	case strings.HasPrefix(toParse, "OK {\"quest_id\""):
+	case strings.HasPrefix(toParse, "OK {\"quest_id\"") || strings.HasPrefix(toParse, "OK { \"quest_id\""):
 		if err := json.Unmarshal([]byte(toUnmarshal), &quest); err != nil {
 			return ReplyContent{}, err
 		}
 
 		return ReplyContent{Type: ReplyQuest, Quest: quest}, nil
 
-	case strings.HasPrefix(toParse, "OK [{"):
+	case strings.HasPrefix(toParse, "OK [{") || strings.HasPrefix(toParse, "OK [ {"):
 		if err := json.Unmarshal([]byte(toUnmarshal), &quests); err != nil {
 			return ReplyContent{}, err
 		}
 
 		return ReplyContent{Type: ReplyQuests, Quests: quests}, nil
 
-	case strings.HasPrefix(toParse, "OK [\"item."):
+	case strings.HasPrefix(toParse, "OK [\"item.") || strings.HasPrefix(toParse, "OK [ \"item."):
 		if err := json.Unmarshal([]byte(toUnmarshal), &inventory); err != nil {
 			return ReplyContent{}, err
 		}
 
 		return ReplyContent{Type: ReplyInventory, Inventory: inventory}, nil
 
-	case strings.HasPrefix(toParse, "OK [\"key_item."):
+	case strings.HasPrefix(toParse, "OK [\"key_item.") || strings.HasPrefix(toParse, "OK [ \"key_item."):
 		if err := json.Unmarshal([]byte(toUnmarshal), &keyitems); err != nil {
 			return ReplyContent{}, err
 		}
@@ -344,7 +348,23 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 		return ReplyContent{Type: ReplyKeyitems, KeyItems: keyitems}, nil
 
 	case strings.HasPrefix(toParse, "OK "):
-		return ReplyContent{Type: ReplyNPCDialogue, NPCText: toUnmarshal}, nil
+		var (
+			talk TalkParse
+			name string
+		)
+
+		npcText := toUnmarshal
+
+		if strings.HasPrefix(toUnmarshal, "{") {
+			if err := json.Unmarshal([]byte(toUnmarshal), &talk); err == nil && talk.Dialogue != "" {
+				name = talk.NPC
+				npcText = talk.Dialogue
+			}
+		}
+
+		isHeal := strings.Contains(npcText, "(You feel a warm glow)")
+
+		return ReplyContent{Type: ReplyNPCDialogue, NPCText: npcText, NPCName: name, NPCHeal: isHeal}, nil
 
 	case strings.HasPrefix(toParse, "ERR "):
 		parts := strings.SplitN(toParse, " ", 3)

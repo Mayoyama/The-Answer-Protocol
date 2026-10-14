@@ -24,13 +24,16 @@ type CommandRouter struct {
 	PendingName      string
 	PlayerUsername   string
 	AttackTargetName string
+	TalkTargetName   string
 	CurrentZone      string
 	InZoneCount      int
 
 	InBattle            bool
 	LastAttack          time.Time
 	BattleTimer         *time.Timer
+	BattleLogHideTimer  *time.Timer
 	battleScreenTimeout chan struct{}
+	battleLogHide       chan struct{}
 }
 
 func (cr *CommandRouter) run() {
@@ -38,18 +41,26 @@ func (cr *CommandRouter) run() {
 		select {
 		case name := <-cr.LoginRequests:
 			cr.handleLoginRequest(name)
+
 		case response := <-cr.ServerResponses:
 			cr.handleServerResponse(response)
+
 		case cmd := <-cr.TapConnRequests:
 			cr.handleTapConnRequest(cmd)
+
 		case err := <-cr.ServerErrs:
 			cr.handleServerErr(err)
+
 		case <-cr.QuitRequest:
 			cr.handleQuit()
+
+			return
+
 		case <-cr.battleScreenTimeout:
 			cr.handleBattleScreenTimeout()
 
-			return
+		case <-cr.battleLogHide:
+			cr.handleBattleLogHide()
 		}
 	}
 }
@@ -124,18 +135,7 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 
 	} else {
 		if cr.Quitting && trimmedRes == "OK bye" {
-			cr.tc.shutdown()
-
-			cr.tc = nil
-			cr.ServerResponses = nil
-			cr.ServerErrs = nil
-			cr.GotGreeting = false
-			cr.LoggedIn = false
-			cr.Quitting = false
-			cr.PendingName = ""
-			cr.CurrentZone = ""
-			cr.PlayerUsername = ""
-			cr.AttackTargetName = ""
+			cr.resetServerState()
 
 			cr.Game.displayGameError("OK bye")
 			time.Sleep(time.Millisecond * 2800)
@@ -157,21 +157,32 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 
 		switch reply.Type {
 		case ReplyAttack:
-			cr.handleAttack(reply)
+			cr.handleBattle(reply)
+
 		case ReplyBattleEnd:
+			cr.setBattleMode(false)
+			cr.logFlee(reply)
+
 		case ReplyChat:
 			cr.handleChat(reply)
+
 		case ReplyError:
 			cr.handleReplyError(reply)
 
 		case ReplyExamine:
 			cr.handleExamine(reply)
+
 		case ReplyGold:
 			cr.handleGold(reply)
+
 		case ReplyGroup:
+
 		case ReplyIgnore:
+
 		case ReplyInventory:
+
 		case ReplyKeyitems:
+
 		case ReplyLook:
 			cr.handleLook(reply)
 
@@ -179,24 +190,37 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 			cr.handleNPCDialogue(reply)
 
 		case ReplyPresence:
-			//cr.handlePresence()
+			cr.handlePresence(reply)
+
 		case ReplyQuest:
+			cr.handleQuest(reply)
+
 		case ReplyQuests:
+
 		case ReplyRespawned:
-			cr.handleRespawn()
+			cr.setBattleMode(false)
+			cr.handleRespawn(reply)
 
 		case ReplyRoomMove:
+			cr.setBattleMode(false)
 			cr.handleMove(reply)
 
 		case ReplyServerCount:
 			cr.handleServerCount(reply)
+
 		case ReplyStatus:
 			cr.handleStatus(reply)
+
 		case ReplyTakeDrop:
+			cr.handleTakeDrop(reply)
+
 		case ReplyWho:
 			cr.handleWho(reply)
+
 		case ReplyOther:
+
 		default:
+
 		}
 	}
 }
@@ -218,6 +242,10 @@ func (cr *CommandRouter) handleTapConnRequest(cmd string) {
 		cr.AttackTargetName = strings.TrimSpace(cmdParts[1])
 	}
 
+	if len(cmdParts) > 1 && strings.EqualFold(cmdParts[0], "talk") {
+		cr.TalkTargetName = strings.TrimSpace(cmdParts[1])
+	}
+
 	if err := cr.tc.sendButtonCommandToServer(cmd); err != nil {
 		cr.Game.displayGameError(err.Error())
 	}
@@ -232,11 +260,17 @@ func (cr *CommandRouter) handleServerErr(err error) {
 		cr.Win.Resize(fyne.NewSize(login_win_w, login_win_h))
 	})
 
+	cr.resetServerState()
+}
+
+func (cr *CommandRouter) resetServerState() {
+	cr.setBattleMode(false)
 	cr.tc.shutdown()
 
 	cr.tc = nil
 	cr.ServerResponses = nil
 	cr.ServerErrs = nil
+	cr.LastAttack = time.Time{}
 	cr.GotGreeting = false
 	cr.LoggedIn = false
 	cr.Quitting = false
@@ -244,6 +278,25 @@ func (cr *CommandRouter) handleServerErr(err error) {
 	cr.CurrentZone = ""
 	cr.PlayerUsername = ""
 	cr.AttackTargetName = ""
+	cr.TalkTargetName = ""
+
+	oTS := cr.Game.OverlayTopSection
+	oBS := cr.Game.OverlayBottomSection
+
+	fyne.Do(func() {
+		oTS.BattleLog.TextWin.Segments = nil
+		oTS.BattleLog.TextWin.Refresh()
+
+		oBS.ChatWindow.TextWin.Segments = nil
+		oBS.ChatWindow.TextWin.Refresh()
+
+		oBS.LogWindow.TextWin.Segments = nil
+		oBS.LogWindow.TextWin.Refresh()
+
+		oTS.BattleLogContent.Hide()
+		oTS.ZoneLookContent.Show()
+		oTS.BattleSwapStack.Refresh()
+	})
 }
 
 func (cr *CommandRouter) handleQuit() {

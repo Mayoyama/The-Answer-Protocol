@@ -96,6 +96,14 @@ func (n *NPC) getNPCName() string {
 	return n.NPCName
 }
 
+// getNPCID returns the NPC's ID.
+func (n *NPC) getNPCID() string {
+	n.NPCMu.Lock()
+	defer n.NPCMu.Unlock()
+
+	return n.NPCID
+}
+
 // getNPCRole returns the NPC's role as a string for responses and logs.
 func (n *NPC) getNPCRole() string {
 	n.NPCMu.Lock()

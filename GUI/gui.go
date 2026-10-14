@@ -23,6 +23,7 @@ func main() {
 	tapConnRequests := make(chan string, 16)
 	quitRequest := make(chan struct{}, 1)
 	battleScreenTimeout := make(chan struct{}, 1)
+	battleLogHide := make(chan struct{}, 1)
 
 	win.SetCloseIntercept(func() {
 		select {
@@ -53,6 +54,7 @@ func main() {
 		TapConnRequests:     tapConnRequests,
 		QuitRequest:         quitRequest,
 		battleScreenTimeout: battleScreenTimeout,
+		battleLogHide:       battleLogHide,
 	}
 
 	go cr.run()

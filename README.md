@@ -23,13 +23,17 @@
 
 ## Description
 
-TAP (The Answer Protocol) is a shared-world, TCP-based text adventure: a Go server hosts a persistent world (rooms, items, NPCs) that multiple clients connect to over a line-based text protocol (RFC 42TAP), with real-time chat, movement, grouping, and item interaction. The server also runs a turn-based combat system, a quest system with chained quests and key items, and a healer NPC. This repo currently contains the **server**, a **CLI client** (in both Go and Rust) and a **GUI client** (Go with Fyne), which is still in progress; its design is documented in [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
+TAP (The Answer Protocol) is a shared-world, TCP-based text adventure. A Go server hosts a persistent world (rooms, items, NPCs) that multiple clients connect to over a line-based text protocol (RFC 42TAP), with real-time chat, movement, groups and item interaction, plus turn-based combat, chained quests with key items, and a healer NPC.
+
+The project follows a 42 school assignment (referred to below as "the subject"). The subject comes with a protocol specification, **RFC 42TAP**, which defines the commands, replies, events and error codes. It requires implementations to follow the RFC strictly, to document any deviation, and to keep clients interchangeable between different groups' servers. Where this README mentions a subject section (e.g. V.4), it refers to the assignment's own chapters.
+
+The repository contains the **server**, a **CLI client** (Go and Rust versions) and a **GUI client** (Go with Fyne, in progress; design in [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md)). An example session is shown under [CLI Client](#cli-client).
 
 [↑ Back to top](#top)
 
 ## Instructions
 
-Requirements: Go, Rust/Cargo for the Rust CLI, and a C compiler for the GUI client (Fyne uses cgo); versions and details are under **Building and Running**. From the repository root:
+Requirements: Go, Rust/Cargo for the Rust CLI, and a C compiler for the GUI client (Fyne uses cgo); details under [Building and Running](#building-and-running). From the repository root:
 
 1. `make install` downloads the dependencies and builds the server, both CLI clients and the GUI client.
 2. `make run-server` starts the server on TCP port 4242.
@@ -42,424 +46,291 @@ Requirements: Go, Rust/Cargo for the Rust CLI, and a C compiler for the GUI clie
 ## Architecture
 
 ### Dispatcher-based design
-Two dispatch layers: `handleLogin` handles the pre-authentication state (CONNECT/QUIT only, with its own token-bucket spam guard), then once a player has an identity, `commandDispatch` takes over as the central command router for all in-game commands (LOOK, MOVE, CHAT, GROUP, TAKE, DROP, TALK, EXAMINE, ATTACK, FLEE, QUEST, STATUS, INVENTORY, KEYITEMS, QUESTS, GOLD, WHO, QUIT). `GROUP` and `CHAT` each have their own sub-dispatcher (`groupFuncDispatcher`, `chatDispatcher`) for their subcommands/scopes.
+
+- `handleLogin` handles the pre-authentication state (`CONNECT`/`QUIT` only, with its own token-bucket spam guard).
+- After login, `commandDispatch` routes every in-game command. `CHAT` and `GROUP` have their own sub-dispatchers (`chatDispatcher`, `groupFuncDispatcher`) for scopes and subcommands.
 
 ### Concurrency model
-One goroutine per accepted TCP connection (`handleTCPConn`), reading line-by-line with a 15-minute idle read deadline. Shared state is protected with fine-grained mutexes rather than a single global lock: each `Player`, `Zone`, and `Group` has its own mutex, plus package-level mutexes for the top-level registries (`onlinePlayers`, `zones`, `parties`, `items`, `npcs`, the softban/rate-limit maps). The `keyItems` registry is only written while `world.yaml` is loaded and is read-only afterwards, so it needs no mutex. Broadcasts (chat, zone enter/leave, group events) iterate the relevant map while holding its mutex and write directly to each player's `net.Conn`.
 
-### Combat goroutines
-Each fight runs in its own goroutine (`processBattle`, `battle.go`). The player's connection goroutine sends one signal per `ATTACK` on an unbuffered channel and waits for that round's result on a second channel, so rounds are strictly sequential and fight state is only touched by the fight goroutine. Ongoing fights are tracked in `OngoingBattles` (keyed by player name, own mutex).
+- One goroutine per TCP connection (`handleTCPConn`), reading line by line with a 15-minute idle deadline.
+- Fine-grained mutexes instead of one global lock: each `Player`, `Zone`, `Group` and `NPC` has its own, plus one per top-level registry (`onlinePlayers`, `zones`, `parties`, `items`, `npcs`, the ban/rate-limit maps). `keyItems` is read-only after loading, so it needs none.
+- Broadcasts iterate the relevant map under its mutex and write directly to each player's `net.Conn`.
+- Each fight runs in its own goroutine (`processBattle`, `battle.go`). The player's connection goroutine sends one signal per `ATTACK` and waits for that round's result, so rounds are strictly sequential and fight state is only touched by the fight goroutine.
 
 ### Rate limiting / abuse handling
-Implemented in `security.go`: a per-player token-bucket throttle (refill 0.75/sec, capacity 8) gates command frequency; falling below 1 token starts a 1-minute per-player timeout (`ERR 750`). Every input sent during the timeout is answered with a warning that shows the time remaining and counts as a violation; the 10th violation becomes a hard IP-level ban (`ERR 760`, 20 minutes). A host that opens 5 connections within 5 seconds is banned as well (20–30 minutes, chosen at random; `trackConnCount`). Bans are checked as each connection is accepted, before it is handed to `handleTCPConn`. IP bans are keyed on the bare host (port stripped via `net.SplitHostPort`), not `RemoteAddr().String()`, so a client can't dodge a ban by reconnecting on a new ephemeral port. Read-only queries (`LOOK`, `WHO`, `STATUS`, `GOLD`) use a separate bucket (refill 1/sec, capacity 8) so a client that polls them doesn't drain the main one: when it is empty, the query is answered with `ERR 747 EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` and nothing else happens. About 20 rejections within 10 seconds start the same 1-minute timeout. A bare `QUIT` is always answered, and so are queries while the query bucket has tokens, even during a timeout; a query rejected during a timeout counts as a violation. Since a timeout needs 20 rejections within 10 seconds, a client that stays below that rate keeps receiving `ERR 747` without a penalty; the cost to the server is one short reply per line. To keep the log readable, a rejected query is logged only for the first rejection in a window and then for every 5th one; the reply is still sent every time. Any line longer than 1024 bytes (the limit RFC §9.4 recommends) is rejected with `ERR 675 MESSAGE_TOO_LONG` before it reaches the login or command handling, so it does not use up tokens; the first one is logged, and the 5th within 5 minutes closes the connection. A line over 64 KB hits the scanner's limit and closes the connection at once. This satisfies RFC §9.4's "chat message frequency" resource-limit recommendation.
+
+Implemented in `security.go`, covering the resource limits recommended in RFC §9.4 (message length, connection count, message frequency):
+
+- **Command throttle:** a per-player token bucket (refill 0.75/s, capacity 8). An empty bucket starts a 1-minute timeout (`ERR 750`). Each input during the timeout is a violation; the 10th becomes a 20-minute IP ban (`ERR 760`).
+- **Query bucket:** `LOOK`, `WHO`, `STATUS` and `GOLD` use a separate bucket (refill 1.2/s, capacity 10), so polling doesn't drain the main one. An empty bucket answers `ERR 747` with no penalty; about 20 rejections within 10 seconds start the 1-minute timeout. During a timeout, a bare `QUIT` and queries with tokens left are still answered.
+- **Connection flooding:** 5 connections from one host within 5 seconds give a 20–30 minute ban (`trackConnCount`). Bans are keyed on the bare host (port stripped), so reconnecting on a new port doesn't dodge them.
+- **Line length:** lines over 1024 bytes get `ERR 675 MESSAGE_TOO_LONG` without using tokens; the 5th within 5 minutes closes the connection. A line over 64 KB closes it at once.
 
 [↑ Back to top](#top)
 
 ## CLI Client
 
-### Two implementations
-The CLI client exists in two versions, both in `CLI/`:
+Two versions in `CLI/` behave the same way: Rust (`src/main.rs`, `make run-client`) and Go (`cli.go`, `make run-go-client`). Both connect to `localhost:4242`, ask for a username and send `CONNECT <username>`, and keep printing server events while waiting for input.
 
-- **Rust** (`src/main.rs`): run with `make run-client`
-- **Go** (`cli.go`): run with `make run-go-client`
+**Command interface choice (subject V.3):** the subject allows either raw protocol commands or a friendlier translation layer. These clients pass input straight through as RFC protocol syntax (`MOVE north` is sent as `MOVE north`); commands are case-insensitive. The client only sends `CONNECT <username>` at startup and `QUIT` on Ctrl+C or Ctrl+D by itself.
 
-Both behave the same way: they connect to the server on `localhost:4242`, ask for a username and send `CONNECT <username>` automatically, pass every typed line to the server unchanged, and send `QUIT` on Ctrl+C or Ctrl+D.
+### Example session
 
-### Command interface choice
+Typed lines are lowercase; everything else is printed by the server (Go CLI):
 
-The subject (V.3) allows two approaches: passing user input straight through as RFC protocol syntax, or building a translation layer that maps friendlier commands to protocol packets.
+```
+OK hello proto=1
 
-The CLI uses the first option: it sends what the user types directly to the server as-is (e.g. typing `MOVE north` sends `MOVE north` verbatim). The only exceptions are the initial `CONNECT <username>` prompt on startup and `QUIT` on disconnect/Ctrl+C/Ctrl+D, which the client sends automatically. No parsing, aliasing, or friendlier syntax is implemented on top of raw protocol commands.
+Enter a new username between 2 and 10 characters:
+speterse
+OK connected
+
+EVT STATS players=1
+look
+OK {"room":{"id":"zone.taverne","name":"Taverne","description":"A dim, smoky room with a long wooden bar and a crackling hearth.","exits":{"east":"zone.fountain_square"}},"players":["speterse"],"items":["item.dented_tankard","item.old_lute"],"npcs":["npc.george"]}
+examine dented tankard
+ERR 670 INVALID_ARGS
+examine item dented tankard
+OK {"name":"Dented Tankard","description":"A well-used tankard. Smells of dark ale.","obtainable":true}
+take dented tankard
+OK taken=item.dented_tankard
+talk george
+OK {"npc":"npc.george","dialogue":"Welcome, traveler. Mind the floorboards."}
+quest george
+OK {"quest_id":"quest.a_loaf_for_the_needy","description":"George seems to need help with his daily chores.","reward":{"key_item":"key_item.rusty_dagger"},"status":"available"}
+quests
+OK [{"quest_id":"quest.a_loaf_for_the_needy","status":"active","progress":"0/2"}]
+talk george
+OK {"npc":"npc.george","dialogue":"Hey there! Be a champ and take this [keyitem.Loaf] to Kassandra for me, would you? Thanks! (You receive Loaf of Bread)"}
+move east
+OK room=zone.fountain_square
+talk kassandra
+OK {"npc":"npc.kassandra","dialogue":"What's this, a loaf of bread? So George thinks to woo me with crumbs... (looks into your eyes...) Ah, so you're the one... This found its way to me this morning but now it has found its true owner."}
+speterse receives Rusty Dagger.
+who
+OK {"room":["speterse"],"server":1}
+status
+OK {"hp":100,"max_hp":100,"status":"healthy"}
+```
 
 [↑ Back to top](#top)
 
 ## GUI Client
 
-The GUI client (`GUI/`, Go with Fyne v2.8.1) is still in progress. [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md) is the reference for its design: the layout of the game screen, what each element does, which parts of the subject each one covers, the data refresh plan and the choices behind them. This section only covers what that document doesn't.
+The GUI client (`GUI/`, Go with Fyne v2.8.1) is in progress. Its design (layout, elements, which subject requirement each one covers, refresh plan) is in [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
 
-- **Login:** a username field and a Connect button. The name is trimmed and checked (2–10 characters, as the server requires) before anything is sent, so a bad name never reaches the server's rate limiter. Server errors (for example `ERR 201 NAME_IN_USE`) are shown under the button, which is enabled again.
-- **Connection loss:** the client returns to the login screen with a "Connection lost" message.
-- **Built so far:** the login, and on the game screen the zone image; the top row (HP bar, room name, `Online` and `Room` counters); the status and gold labels; the Room Details button with the zone info box (description, players, NPCs, exits, items); the direction buttons (with the `ERR 750` lockout); the chat and log windows; and the manual command entry. After login the client sends `LOOK`, `STATUS` and `GOLD` to fill the screen. The other elements described in the FSD are not built yet.
+- **Design:** one router goroutine owns the connection and all connection state; widget callbacks only send requests on channels, and widgets are updated through `fyne.Do`. `TAPResponsesParser.go` turns each server line into a typed reply.
+- **Login:** the name is trimmed and checked (2–10 characters) before anything is sent; server errors (e.g. `ERR 201 NAME_IN_USE`) are shown under the Connect button. A lost connection returns to the login screen.
+- **Built so far:**
+  - a pixel-art background image for each room
+  - a top row with an HP bar, the room name, and counters for players online and players in the room
+  - the player's status and gold
+  - a room details panel (description, players, NPCs, exits, items) that updates live and can be hidden with a button
+  - a battle log that takes the room details panel's place during a fight, one entry per round
+  - direction buttons for moving, disabled during a rate-limit timeout (`ERR 750`)
+  - separate chat and log windows; the chat window also shows NPC dialogue, in either TALK reply format
+  - a text field for typing raw protocol commands
 
-**Design.** One router goroutine owns the connection and all connection state; button callbacks only send requests on channels, and widgets are updated through `fyne.Do`. `TAPResponsesParser.go` turns each server line into a typed reply (room move, look, error, chat, ...), so the router never parses strings itself.
+  The other elements in the design record are not built yet.
 
 [↑ Back to top](#top)
 
 ## Protocol Implementation
 
-All errors are sent as `ERR <code> <MESSAGE>`.
+All RFC 42TAP commands and events are implemented. Because the subject requires strict RFC compliance with every deviation documented, this section lists where the server deviates from or adds to the RFC.
 
-### RFC 42TAP standard error codes
-These are used exactly as defined in the RFC's standard error code table and are not altered:
+### Error codes
 
-| Code | Message | Meaning |
-|---|---|---|
-| 201 | `NAME_IN_USE` | Requested username is already taken |
-| 301 | `NO_EXIT` | Invalid movement direction |
-| 401 | `NOT_IN_GROUP` | Group operation requires group membership |
-| 402 | `ALREADY_IN_GROUP` | Player already belongs to a group |
-| 404 | `ITEM_NOT_FOUND` | Requested item is not in the room |
-| 404 | `ITEM_NOT_IN_INVENTORY` | Requested item is not in the player's inventory |
-| 404 | `NPC_NOT_FOUND` | Requested NPC is not in the room |
-| 405 | `NPC_NOT_HOSTILE` | NPC can't be attacked (not an enemy) |
-| 406 | `NO_QUEST_AVAILABLE` | NPC has no quest available for the player |
-| 900 | `CONNECTION_FAILED` | Connection failed |
-| 901 | `SEND_FAILED` | Message transmission failed |
+All errors are sent as `ERR <code> <MESSAGE>`. **RFC** codes are used exactly as the RFC defines them; **Server** codes are additions of this server.
 
-### Server-specific error codes
-Additions beyond the RFC's table, using codes the RFC leaves unassigned or reusing an RFC category for a case it doesn't list:
+| Code | Message | Source | Meaning |
+|---|---|---|---|
+| 201 | `NAME_IN_USE` | RFC | Username already taken |
+| 202 | `NAME_TOO_LONG` / `NAME_TOO_SHORT` | Server | Username outside 2–10 characters |
+| 204 | `INVALID_CHAR_IN_NAME` | Server | Username with a non-printable character or a space, a reserved name (`OK`, `ERR`, `EVT`, `ADMIN`, `SERVER`, `SYSTEM`, `STAFF`) or a prefix that imitates a server line or ID (`<`, `{`, `[`, `(`, `npc.`, `item.`, `zone.`, `key_item.`) |
+| 301 | `NO_EXIT` | RFC | No exit in that direction |
+| 401 | `NOT_IN_GROUP` | RFC | Group action without being in a group |
+| 401 | `NOT_GROUP_LEADER` | Server | `GROUP INVITE` by a non-leader, or `GROUP JOIN` with no such group |
+| 402 | `ALREADY_IN_GROUP` | RFC | Player is already in a group |
+| 403 | `ITEM_NOT_OBTAINABLE` | Server | `TAKE` on fixed scenery |
+| 404 | `ITEM_NOT_FOUND` | RFC | Item not in the room |
+| 404 | `ITEM_NOT_IN_INVENTORY` | RFC | Item not in the player's inventory |
+| 404 | `NPC_NOT_FOUND` | RFC | NPC not in the room |
+| 404 | `PLAYER_NOT_FOUND` | Server | Invited player doesn't exist |
+| 405 | `NPC_NOT_HOSTILE` | RFC | NPC can't be attacked |
+| 405 | `NPC_CURRENTLY_OCCUPIED` | Server | NPC is already fighting another player |
+| 406 | `NO_QUEST_AVAILABLE` | RFC | NPC has no quest for the player |
+| 666 | `INVALID_COMMAND` | Server | Unknown command (RFC §9.3 asks for an error reply to malformed input) |
+| 666 | `COMMAND_NOT_AVAILABLE_IN_COMBAT` | Server | `MOVE`, `TAKE`, `DROP` or `QUEST` during a fight |
+| 670 | `INVALID_ARGS` / `MISSING_ARGS` | Server | Unexpected or missing arguments |
+| 675 | `MESSAGE_TOO_LONG` | Server | Line longer than 1024 bytes |
+| 747 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` | Server | Query rejected, query bucket empty; no timeout |
+| 750 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_APPLIED` | Server | 1-minute timeout; replies during it end with `Time remaining: <time>` |
+| 760 | `SOFTBANNED_FROM_SERVER` | Server | IP temporarily banned |
+| 825 | `INTERNAL_ERROR` | Server | Unexpected server-side failure |
+| 880 | `JSON_ERROR` | Server | A JSON reply couldn't be built (logged; the client gets `825`) |
+| 900 | `CONNECTION_FAILED` | RFC | Connection failed (sent to players when the server shuts down) |
+| 901 | `SEND_FAILED` | RFC | Message transmission failed (a group invite couldn't be delivered to the invited player) |
+| 905 | `ALREADY_CONNECTED` | Server | `CONNECT` while already logged in |
+| 911 | `INBOUND_CONNECTION_FAILURE` | Server | Accepting a connection failed (log only) |
 
-| Code | Message | Meaning |
-|---|---|---|
-| 202 | `NAME_TOO_LONG` / `NAME_TOO_SHORT` | Username outside 2–10 characters (the RFC only defines `201` for name collisions) |
-| 204 | `INVALID_CHAR_IN_NAME` | Username contains non-printable characters (RFC §9.2 says servers should reject or safely handle control characters), a space, a reserved name (`OK`, `ERR`, `EVT`, `ADMIN`, `SERVER`, `SYSTEM`, `STAFF`; case-insensitive) or one of the prefixes `<`, `{`, `[`, `(`, `npc.`, `item.`, `zone.`, `key_item.`. A player name must not be able to imitate a server line or ID: some server lines begin with a name (`<name> receives …`), and event lines are split on spaces. |
-| 401 | `NOT_GROUP_LEADER` | `GROUP INVITE`/`JOIN` restricted to the group leader (same category as the RFC's `NOT_IN_GROUP`) |
-| 403 | `ITEM_NOT_OBTAINABLE` | `TAKE` on fixed scenery that can't be picked up |
-| 404 | `PLAYER_NOT_FOUND` | Invited player doesn't exist |
-| 405 | `NPC_CURRENTLY_OCCUPIED` | NPC is already in a fight with another player |
-| 666 | `INVALID_COMMAND` | Unknown command (malformed-command handling, RFC §9.3) |
-| 666 | `COMMAND_NOT_AVAILABLE_IN_COMBAT` | `MOVE`, `TAKE`, `DROP` and `QUEST` are refused during a fight |
-| 670 | `INVALID_ARGS` / `MISSING_ARGS` | Unexpected or missing arguments |
-| 675 | `MESSAGE_TOO_LONG` | A line longer than 1024 bytes (the limit RFC §9.4 recommends) was rejected; the 5th such line within 5 minutes closes the connection (see Architecture) |
-| 747 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` | A read-only query (`LOOK`, `WHO`, `STATUS`, `GOLD`) was rejected because the query bucket is empty; no timeout is applied (see Architecture) |
-| 750 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_APPLIED` | Rate limit exceeded; a 1-minute timeout is applied, and replies sent during it end with `Time remaining: <time>` (see Architecture) |
-| 760 | `SOFTBANNED_FROM_SERVER` | IP temporarily banned after repeated violations (see Architecture) |
-| 825 | `INTERNAL_ERROR` | Unexpected server-side failure |
-| 878 | `YAML_ERROR` | Reserved for world-data parsing errors (not currently sent to clients) |
-| 880 | `JSON_ERROR` | Logged when a JSON response can't be built; the client receives `825` instead |
-| 905 | `ALREADY_CONNECTED` | `CONNECT` sent while already logged in |
-| 911 | `INBOUND_CONNECTION_FAILURE` | Logged when accepting an incoming connection fails (server log only) |
+### WHO and TALK: RFC vs subject PDF
 
-### WHO command
+The RFC and the subject PDF's example interactions (p.12) disagree on two replies. In both cases this server follows the PDF:
 
-RFC 42TAP section 5.2.2 specifies `WHO` as:
+| Command | RFC 42TAP | Subject PDF | This server |
+|---|---|---|---|
+| `WHO` | `OK players=<count>` | `OK { "room": ["alice", "bob"], "server": 5 }` | `OK {"room":["alice"],"server":1}` |
+| `TALK` | `OK Welcome to my bakery!` | `OK { "npc": "guard", "dialogue": "Stay safe, traveler." }` | `OK {"npc":"npc.george","dialogue":"Welcome, traveler. Mind the floorboards."}` |
 
-```
-Response: OK players=<count>
-```
+- **WHO:** the JSON form gives clients both player counters required by the subject (V.4) in one reply.
+- **TALK:** the JSON form makes dialogue recognisable by its own shape and names the speaking NPC (by ID). Everything the NPC says is in `dialogue`, including the healer and quest suffixes below. The GUI client accepts both forms.
 
-However, the subject PDF's own "Example interactions" section (NPC interaction and inventory, p.12) shows a different response format:
+### QUEST, QUESTS and GROUP
 
-```
-C: WHO
-S: OK { "room": ["alice", "bob"], "server": 5 }
-```
-
-These two source documents disagree. This server implements the JSON form shown in the subject PDF's example, since it's the canonical example given for the project and it also gives the GUI client a ready source for the room/server player counters required in V.4.
-
-Example from this server:
-
-```
-C: WHO
-S: OK {"room":["shane"],"server":1}
-```
-
-### QUEST command
-
-The subject PDF's example QUEST response encodes `reward` as a bare string:
-
-```
-S: OK {"quest_id": "fetch_herbs", "description": "Bring me 3 healing herbs", "reward": "gold_coin", "status": "available"}
-```
-
-This server returns `reward` as a nested object instead of a string, since a quest's reward can be a key item, gold, or both — a single string can't hold that combination without the client having to parse it back apart. `reward` is `null` when a quest has no reward (e.g. a step in a chain with no direct payout).
-
-RFC 42TAP §6.1.2 leaves acceptance mechanics to the implementer. Here `QUEST <npc>` both offers and accepts: the NPC's next eligible quest (the first one that NPC offers which the player doesn't already have, and whose prerequisite, if any, is completed — `NPC.getNPCQuest`) is added to the player's quest list, and the reply is that quest with `status: "available"`, as in the RFC's example. `QUESTS` then reports it as `"active"` until it is `"completed"`. If the NPC has nothing to offer, the reply is `ERR 406 NO_QUEST_AVAILABLE`.
-
-```go
-type QuestResponse struct {
-    QuestID     string  `json:"quest_id"`
-    Description string  `json:"description"`
-    Reward      *Reward `json:"reward"`
-    Status      string  `json:"status"`
-}
-
-type Reward struct {
-    KeyItem string `json:"key_item,omitempty"`
-    Money   int    `json:"gold,omitempty"`
-}
-```
-
-Example from this server:
-
-```
-C: QUEST george
-S: OK {"quest_id": "quest.a_loaf_for_the_needy", "description": "George seems to need help with his daily chores.", "reward": {"key_item": "key_item.rusty_dagger"}, "status": "available"}
-```
-
-### QUESTS command
-
-The RFC's `QUESTS` example shows `quest_id`, `status` and `progress`. This server keeps those and adds an optional `quest_items` field (`"held/needed"`) while a quest's current step requires key items, so the player can see how many they still need to bring. The field is left out for all other quests.
-
-```
-C: QUESTS
-S: OK [{"quest_id":"quest.a_loaf_for_the_needy","status":"completed"},{"quest_id":"quest.arms_dealer","status":"active","progress":"1/2","quest_items":"1/2"}]
-```
-
-### GROUP command
-
-The RFC gives `OK group=<group-id>` as the reply to `GROUP CREATE` and `GROUP JOIN` but doesn't define the ID format. This server's group ID is `PT-<leader name>`. `GROUP JOIN <leader>` replies `OK group=PT-<leader>`. `GROUP CREATE` replies `OK group=NEWPT-<leader>`: the `NEW` prefix is a deviation that lets a client tell a created group from a joined one, since both replies otherwise look the same. The group itself is still `PT-<leader>`.
-
-```
-C: GROUP CREATE
-S: OK group=NEWPT-alice
-
-C: GROUP JOIN alice
-S: OK group=PT-alice
-```
-
-`GROUP LEAVE` replies with a bare `OK`, as the RFC defines. Because the reply carries no other information, the server then sends the player `EVT GROUP LEAVE <own name>`. A leader leaving disbands the group: the leader gets this event too, and every other member gets `EVT GROUP LEAVE` for the leader and for themselves.
+- **`QUEST <npc>`** offers and accepts in one step (RFC §6.1.2 leaves acceptance to the implementer): the NPC's next eligible quest is added to the player's list and returned with `"status":"available"`; `ERR 406` if there is none. `reward` is an object instead of the PDF's string, because a reward can be a key item, gold or both, and is `null` when there is none:
+  ```
+  C: QUEST george
+  S: OK {"quest_id":"quest.a_loaf_for_the_needy","description":"George seems to need help with his daily chores.","reward":{"key_item":"key_item.rusty_dagger"},"status":"available"}
+  ```
+- **`QUESTS`** adds an optional `quest_items` field (`"held/needed"`) while the current step needs key items:
+  ```
+  S: OK [{"quest_id":"quest.a_loaf_for_the_needy","status":"completed"},{"quest_id":"quest.arms_dealer","status":"active","progress":"1/2","quest_items":"1/2"}]
+  ```
+- **`GROUP`:** the group ID is `PT-<leader>`. `GROUP JOIN <leader>` replies `OK group=PT-<leader>`; `GROUP CREATE` replies `OK group=NEWPT-<leader>`, so a client can tell a created group from a joined one. After `GROUP LEAVE`'s `OK`, the player also gets `EVT GROUP LEAVE <own name>`. A leader leaving disbands the group, and every other member gets `EVT GROUP LEAVE` for the leader and for themselves.
 
 ### Custom commands
 
-RFC 42TAP §6.1.1 and §6.1.2 leave additional combat and quest commands to the implementer. This server adds the following commands; all of them use the standard `OK` / `ERR <code> <MESSAGE>` replies.
+RFC §6.1.1 and §6.1.2 leave extra combat and quest commands to the implementer:
 
-#### `FLEE`
-
-`FLEE` (no argument; a player can only be in one fight at a time) ends the player's current fight early (`OK battle ended`). The fight is abandoned with no reward and no respawn; the player keeps their current HP. Outside a fight it returns `ERR 666 INVALID_COMMAND`. RFC 42TAP §6.1.1 lists `FLEE` as an example of an implementer-defined combat command.
-
-#### `GOLD`
-
-`GOLD` (no argument) returns the player's gold balance as `OK <amount> GOLD`. Gold is earned from quest rewards.
-
-#### `EXAMINE`
-
-`LOOK` takes no arguments in the RFC, so item and NPC descriptions from `world.yaml` would otherwise never reach the player. `EXAMINE` (`examine.go`) shows them:
-
-```
-EXAMINE <NPC|ITEM|KEYITEM> <name>
-```
-
-The first word picks what to look up (case-insensitive); the rest is the name, matched by display name, ID or `world.yaml` key, case-insensitively. The scope word is required: `EXAMINE dented tankard` without it returns `ERR 670 INVALID_ARGS`.
-
-The reply always contains `name` and `description`. The fields below depend on the scope.
-
-- `NPC` — the NPC must be in the player's room (`ERR 404 NPC_NOT_FOUND` otherwise). The reply adds `npc_role` (`general`, `questGiver`, `healer` or `enemy`), so a client can tell whether the NPC offers quests.
-- `ITEM` — the item must be in the player's room or inventory (`ERR 404 ITEM_NOT_FOUND` otherwise). The reply adds `obtainable`, which is `true` for items that can be taken; the field is left out for fixed scenery.
-- `KEYITEM` — the player must hold the key item (`ERR 404 ITEM_NOT_IN_INVENTORY` otherwise).
-- Any other scope word returns `ERR 670 INVALID_ARGS`.
+| Command | Reply |
+|---|---|
+| `FLEE` | Ends the current fight (`OK battle ended`) with no reward and no respawn; the player keeps their HP. `ERR 666` outside a fight. |
+| `GOLD` | `OK <amount> GOLD`. Gold comes from quest rewards. |
+| `KEYITEMS` | The held key items as a JSON array, like `INVENTORY` (e.g. `OK ["key_item.rusty_dagger"]`). |
+| `EXAMINE <NPC\|ITEM\|KEYITEM> <name>` | `OK {"name":…,"description":…}`. NPCs must be in the room and add `npc_role`; items must be in the room or inventory and add `obtainable`; key items must be held. The scope word is required (`ERR 670` otherwise). |
 
 ```
 C: EXAMINE ITEM dented tankard
 S: OK {"name":"Dented Tankard","description":"A well-used tankard. Smells of dark ale.","obtainable":true}
-
-C: EXAMINE NPC george
-S: OK {"name":"George","description":"The tavern keeper, wiping down the same mug for the tenth time.","npc_role":"questGiver"}
 ```
 
-#### `KEYITEMS`
+### Extra output and events
 
-`KEYITEMS` (no argument) lists the key items the player holds, in the same JSON-array format as `INVENTORY`. Key items are kept out of `INVENTORY` on purpose, so that command still lists only world items as the RFC describes (see Quest System → Key items).
+- **Fight announcements** reuse `EVT ROOM CHAT`, with the NPC's ID in double angle brackets as the sender: `EVT ROOM CHAT <<npc.cave_bat>> Skree! (alice commenced a new battle.)`. A player name can't start with `<`, so they can't be imitated.
+- **`EVT RESPAWN room=<room-id>`** (e.g. `room=zone.chapel`) is sent to a player who loses a fight, after the move.
+- **Inside a TALK reply's `dialogue`:** a healer's heal line ends with `(You feel a warm glow)`; a quest step's `missing_items_dialogue` replaces the normal line; received key items are appended as `(You receive Loaf of Bread)`.
+- **Quest messages** (an `enter_area` step's message, reward lines) are plain-text lines sent after the command's `OK`.
+- **`ATTACK`** returns more fields than the RFC example (see Combat System).
+- **`EVT GROUP LEAVE`** is also sent to the player who leaves (see GROUP above).
+- **`EVT STATS players=<count>`** is sent to everyone on every login and disconnect; a new player gets it right after `OK connected`.
 
-```
-C: KEYITEMS
-S: OK ["key_item.rusty_dagger","key_item.small_gem"]
-```
+### Other notes
 
-### Events
-All RFC 42TAP events are implemented and pushed to clients as they happen:
-
-| Event | Sent when |
-|---|---|
-| `EVT ROOM PRESENCE ENTER <username>` | A player enters the room: by `MOVE`, by logging in (starting room), or by respawning. Sent to the players already there. |
-| `EVT ROOM PRESENCE LEAVE <username>` | A player leaves the room: by `MOVE`, by respawning elsewhere, or by disconnecting. Sent to the players still there. |
-| `EVT ROOM CHAT <username> <message>` | `CHAT ROOM`, to the other players in the room |
-| `EVT GLOBAL CHAT <username> <message>` | `CHAT GLOBAL`, to all other online players |
-| `EVT GROUP INVITE <leader>` | A group leader invites the player |
-| `EVT GROUP JOIN <username>` / `EVT GROUP LEAVE <username>` | A player joins or leaves the group, to its members. The player who leaves also receives `EVT GROUP LEAVE` with their own name (after the `OK`), as members do when a group is disbanded, so a client can tell they are out of the group |
-| `EVT GROUP CHAT <username> <message>` | `CHAT GROUP`, to the other group members |
-| `EVT STATS players=<count>` | The online player count changes (login or disconnect), to every online player. A player who logs in receives it right after `OK connected`, so the login reply always comes first. |
-
-### Combat, healing and quest output
-
-- `ATTACK` returns the RFC's `OK <combat-result>` as a JSON object with more fields than the RFC example (see Combat System).
-- Fight start/end announcements reuse the RFC's room chat event with the NPC as the speaker: `EVT ROOM CHAT <npc name> <message>`.
-- `EVT RESPAWN room=<zone>` is a custom event sent to a player who loses a fight, after they are moved to the respawn zone.
-- Talking to a healer while injured returns the healer's heal line followed by `(You feel a warm glow)` in the normal `OK` reply.
-- Quest progress and reward messages are extra plain-text lines sent after the command's `OK` reply (see Quest System).
-- When a quest step needs key items the player doesn't hold yet, `TALK` replies with that step's `missing_items_dialogue` in the normal `OK` reply.
-- When a quest step gives the player key items, their names are appended to the step's dialogue in the same `OK` reply: `OK <dialogue> (You receive Loaf of Bread)`.
-- Known edge case: NPC dialogue is sent as plain `OK <dialogue>`, so a client recognises it by elimination: it is any `OK` line that doesn't match another reply's shape (JSON, `key=value`, or a fixed word such as `bye`). NPC dialogue in `world.yaml` that imitates one of those shapes can be misread by a client. This is treated as the world author's responsibility for writing correct NPC dialogue, not as a coding issue.
-
-### Case-insensitive input
-Command names are case-insensitive, as RFC §4.2 requires: `handleTCPConn` uppercases the command once before passing it to `handleLogin` or `commandDispatch`, so `look`, `Look` and `LOOK` all work. The same applies to `CHAT` scopes (`chatDispatcher`), `GROUP` subcommands (`groupFuncDispatcher`) and `MOVE` directions (see Movement directions below). Item and NPC names are matched case-insensitively with `strings.EqualFold`.
-
-### Movement directions
-Exits use a fixed set of six directions: `north`, `east`, `south`, `west`, `up` and `down` (the `ZoneMoveDirection` enum in `zones.go`). `parseDirection` converts a direction word to the enum case-insensitively. `MOVE` with any other word, or with a direction the current room has no exit for, returns `ERR 301 NO_EXIT`. `LOOK` still reports exits as plain strings, with the target room's ID as the value, in the same form as `room.id` and `OK room=` (`"exits": {"north": "zone.chapel"}`), so clients only ever see these six words.
-
-### Item system
-Dynamic item system (unique instances, no duplication on TAKE, made available again on DROP, lookup by ID or display name via `strings.EqualFold`) is implemented in `items.go`. Key items are kept outside this system (see Quest System → Key items), so they never conflict with item uniqueness.
+- **Movement:** exits use six directions (`north`, `east`, `south`, `west`, `up`, `down`). Any other word, or a missing exit, returns `ERR 301 NO_EXIT`. In `LOOK`, exit values are room IDs in the same form as `room.id` and `OK room=` (`"exits": {"north": "zone.chapel"}`).
+- **Empty lists** in `LOOK` and `WHO` are sent as `[]`, as in the PDF's examples.
+- **Case-insensitive input:** commands (RFC §4.2), `CHAT` scopes, `GROUP` subcommands, directions, and item/NPC names.
+- **Items:** unique instances, removed from the room on `TAKE`, back on `DROP`, found by ID or display name. Key items are kept outside this system (see Quest System).
 
 [↑ Back to top](#top)
 
 ## Combat System
 
-`ATTACK <npc>` against an attackable `enemy` NPC in the player's room starts a **one-on-one, instanced fight**: the NPC is marked occupied (other players get `ERR 405 NPC_CURRENTLY_OCCUPIED`), the room is told the battle has started, and every further `ATTACK` from that player resolves exactly one round. Other players in the room only see the start and end announcements, not the individual rounds.
+`ATTACK <npc>` against an `enemy` NPC in the room starts a **one-on-one, instanced fight**. The NPC is marked occupied (others get `ERR 405 NPC_CURRENTLY_OCCUPIED`), the room is told the fight has started, and each further `ATTACK` from that player resolves one round. Other players only see the start and end announcements. `FLEE` is the only additional combat command; there is no `DEFEND`.
 
-### Stats
-Players start with 100 HP, strength 7, battle skill 7 and dexterity 10. A key item with a `skill_boost` (the Ornate Dagger, +2) raises battle skill when it is received as a quest reward. NPC stats come from `world.yaml` (`hp`, `str`, `battle_skill`, `dex`); the validator requires enemies to have `str` and `battle_skill` of at least 1 and `dex` of at most 90.
+### Stats and rounds
 
-### A round
-1. Both sides roll a d6 for initiative every round; a tie goes to the player. Initiative only decides who strikes first — both sides still attack.
-2. Damage is `strength + roll(1..battle_skill)` (8–14 for a player).
-3. The defender dodges completely if a 1–100 roll is not higher than their dexterity (dexterity 10 = 10% dodge chance).
-4. If the first attack brings the defender to 0 HP, the second attack doesn't happen.
+- Players start with 100 HP, strength 7, battle skill 7 and dexterity 10. The Ornate Dagger quest reward adds +2 battle skill. NPC stats come from `world.yaml` (`hp`, `str`, `battle_skill`, `dex`).
+- Each round, both sides roll a d6 for initiative (a tie goes to the player). Initiative only decides who strikes first; both sides attack, unless the first hit brings the other to 0 HP.
+- Damage is `strength + roll(1..battle_skill)` (8–14 for a player).
+- An attack is dodged completely if a 1–100 roll is not higher than the defender's dexterity (dex 10 = 10% dodge).
 
 ### Ending a fight
-- **Player wins:** the NPC is "defeated" rather than killed — its fight HP was a per-fight copy, so it is immediately available again at full HP. The room is told who won, and any active quest waiting on a `battle` step against that NPC advances.
-- **Player loses:** the player respawns in the chapel (`respawnZone`) with half their max HP (rounded up) and receives `EVT RESPAWN room=chapel`. Quests are never failed by a loss; the player can try again.
-- **`FLEE`** or a disconnect ends the fight early; the room is told the battle ended prematurely.
 
-### Player status
-During a fight the player's status is `engaged`. When a fight ends (or after healing) it is recalculated from HP: `injured` at 30% or less, `weakened` at 60% or less, otherwise `healthy`. `STATUS` reports `{"hp", "max_hp", "status"}`. If the status can't be calculated (max HP of 0 — should never happen, and new players are checked at login), it is set to `unknown` and a warning is logged rather than disconnecting the player.
+- **Win:** the NPC is "defeated", not killed. Its fight HP was a per-fight copy, so it is available again at full HP. The room is told who won, and a quest waiting on that fight advances.
+- **Loss:** the player respawns in the chapel with half their max HP (rounded up) and receives `EVT RESPAWN room=zone.chapel`. A loss never fails a quest.
+- **`FLEE` or disconnect:** the fight ends early and the room is told.
 
-### Healing
-`TALK` to a `healer` NPC while below max HP restores the player to full HP and returns the healer's heal line (from `world.yaml`'s `heal_dialogue`) followed by `(You feel a warm glow)`. At full HP the healer just uses their normal dialogue. The reply deliberately doesn't show the new HP; players check `STATUS`.
+### Status and healing
+
+- During a fight the status is `engaged`; afterwards it is recalculated from HP: `injured` (≤ 30%), `weakened` (≤ 60%), otherwise `healthy`. If it can't be calculated (max HP of 0, which shouldn't happen), it becomes `unknown` and a warning is logged.
+- `TALK` to a `healer` while below max HP restores full HP; the reply doesn't show HP, so players check `STATUS`.
 
 ### Design choices
-- **One-on-one, instanced fights:** each fight runs in its own goroutine and only the fighting player can act in it, so rounds are strictly sequential and fight state is only touched by that goroutine. Other players in the room see the start and end announcements only.
-- **Both sides attack every round:** initiative only decides who strikes first, so a lucky roll helps without deciding the fight. Dexterity (dodge) is what makes enemies feel different: the Cave Bat is weak but hard to hit.
-- **Defeated, not killed:** the NPC's HP during a fight is a per-fight copy, so an enemy is available to everyone again immediately and a quest that needs a fight can be retried.
-- **Respawn at half HP:** losing is a setback rather than a failure; a loss never fails a quest.
-- **Balance:** enemy stats were tuned with a fight simulation so that a full-HP player beats the Cave Bat (losing about 24 HP on average) while the Barbarian (90 HP) is the tougher fight.
-- **Additional commands:** `FLEE` is the only additional combat command; there is no `DEFEND`.
+
+- **Instanced fights** keep rounds sequential and fight state owned by one goroutine, with no interference from other players.
+- **Both sides attack every round**, so a lucky initiative roll helps without deciding the fight. Dexterity makes enemies feel different: the Cave Bat is weak but hard to hit.
+- **Defeated, not killed, and respawn at half HP:** enemies stay available to everyone, and losing is a setback rather than a failure.
+- **Balance** was tuned with a fight simulation: a full-HP player beats the Cave Bat (losing about 24 HP on average), and the Barbarian (90 HP) is the tougher fight.
 
 ### `ATTACK` response
-The RFC example shows `attacker_hp`, `target_hp`, `damage` and `status`. This server's reply keeps those and adds the details of the round:
+
+The RFC example's `attacker_hp`, `target_hp`, `damage` and `status` are kept, with the round's details added. `status` is the player's own status rather than the RFC example's `"combat"`:
 
 ```
 C: ATTACK cave bat
 S: OK {"attacker_init_roll":4,"target_init_roll":2,"attacker_hp":95,"attacker_max_hp":100,"target_hp":25,"target_max_hp":36,"target_dodged":false,"damage":11,"attacker_dodged":false,"damage_received":5,"status":"engaged"}
 ```
 
-`status` is the player's own status (`engaged` mid-fight, then `healthy`/`weakened`/`injured` once the fight is over) rather than the RFC example's `"combat"`.
-
 [↑ Back to top](#top)
 
 ## Quest System
 
-Quest data model (`quests.go`): a `Quest` (`Name`, `QuestID`, `Description`, `Type`, `Steps []QuestAction`, `Reward *Reward`, `Requires`) has a `QuestType` (`Delivery`, `Fetch`, `Battle`), and each of its steps implements a `QuestAction` interface (`ActionType() string`) as one of `TalkToAction`, `EnterAreaAction`, or `BattleAction`. When `world.yaml` is parsed, the concrete step type is picked based on which of `talk_to`/`enter_area`/`battle` is present on that step (`QuestStep.UnmarshalYAML`, `parser.go`). A `Reward` is optional and can carry one key item, gold, or both. A `talk_to` step can also list key items it gives to the player (`grants_key_items`) or takes from them (`receives_key_items`), plus an optional `missing_items_dialogue`.
+Quests are defined in `world.yaml` and offered only through their quest-giver NPC. A quest has a type (delivery, fetch or battle), an ordered list of steps, an optional reward (a key item, gold or both) and an optional prerequisite (`requires`). Prerequisite chains are checked at load time for unknown quests and loops of any length.
 
-Quests are defined under `world.yaml`'s top-level `quests:` section and attached to their quest-giver NPC by ID in that NPC's own `quests:` list — there's no separate global quest registry; a player reaches a quest only through the NPC offering it.
+### Progression
 
-### Quest chains
-A quest can optionally name a prerequisite via `requires: <quest_key>` (a bare quest key, `""` if none). `ParseYmlData` validates this at load time by walking each quest's `requires` chain: an unknown prerequisite key is rejected, and so is a chain that loops back on itself, at any length — not just a quest requiring itself directly.
+`QUEST <npc>` accepts the NPC's first quest that the player doesn't have yet and whose prerequisite is completed. Progress is tracked per player and per connection. Each step advances only when it is the quest's current step, inside the handler for its action:
 
-### Per-player progress
-Each `Player` has a `Quests map[string]*PlayerQuest` (`quests.go`), tracking `Quest`, `StepIndex`, and `Status` (`Active`/`Completed`) per accepted quest. `NPC.getNPCQuest` picks the first quest that NPC offers which the player doesn't already have, and whose prerequisite (if any) is already `Completed`.
+- **`talk_to`** (`TALK`): the step's dialogue replaces the NPC's normal lines. A step can give key items (`grants_key_items`) or require and take them (`receives_key_items`); without the required items the NPC replies with the step's `missing_items_dialogue`.
+- **`enter_area`** (`MOVE`): entering the named room sends the step's message. Respawning there doesn't count.
+- **`battle`** (`ATTACK`): winning against the named NPC advances the step; a loss leaves it unchanged.
 
-### Commands
-`QUEST` (`acceptQuest`) takes an NPC's next eligible quest for the calling player: it adds the quest to `player.Quests` as `Active` and replies with the quest (`status: "available"`, as in the RFC's example; see Protocol Implementation). `QUESTS` (`printPlayerQuests`) lists everything the calling player has accepted, as `"active"` or `"completed"`, showing `progress` (`stepIndex/totalSteps`) only while a quest is still `Active`, plus `quest_items` when the current step needs key items (see Protocol Implementation).
-
-### Step progression
-Each step type advances inside the handler for the action it describes, only for the calling player, and only when it is that quest's current step:
-
-- `talk_to` — `TALK <npc>` (`getDialogue`, `NPCs.go`): if an active quest's current step targets that NPC, the step's own `dialogue` is sent in place of the NPC's normal lines. If the step has `receives_key_items`, it only advances when the player holds all of them; otherwise the NPC replies with the step's `missing_items_dialogue` (or their normal lines if it has none). When the step advances, its `grants_key_items` are added to the player's key items (announced as `(You receive <name>)` at the end of the dialogue) and its `receives_key_items` are taken away.
-- `enter_area` — `MOVE` (`handleMove`, `zones.go`): after the normal `OK room=<zone>` reply, if an active quest's current step names the zone just entered, the step's `message` is sent as an extra plain-text line. Respawning into a zone does not count.
-- `battle` — `ATTACK` (`resolveAttackRequest`, `battle.go`): after the final `OK {...}` reply of a fight the player won, the step advances if the defeated NPC is the step's target. A lost fight leaves the step unchanged, so the player can try again.
-
-At most one step advances per action. When the last step completes, `completeQuest` (`quests.go`) marks the quest `Completed` and grants its reward: gold is added to `Player.Gold` and a key item is added to `Player.KeyInventory` (applying its `skill_boost`, if any), each announced with a plain-text line (e.g. `<player> receives 20 gold.`). A quest without a reward sends a short acknowledgement line instead.
+When the last step completes, the quest is marked completed and the reward is granted, each part announced with a plain-text line (e.g. `alice receives 20 gold.`).
 
 ### Key items
-Key items are quest items, defined under `world.yaml`'s `key_items:` section (`name`, `description`, optional `skill_boost`) and referenced elsewhere by their `key_item.<key>` ID. They are held per player in `Player.KeyInventory`, listed with `KEYITEMS` and described with `EXAMINE KEYITEM <name>`.
 
-They are deliberately kept apart from world items: they never appear in a room, can't be taken or dropped, and every player who completes a quest gets their own copy. The subject's item rules (unique instances, no duplication on `TAKE`) apply to world items only. Key items, like the rest of the quest system, are left to the implementer by RFC §6.1.2.
+Key items are per-player quest items (`key_items:` in `world.yaml`, IDs `key_item.<key>`), listed with `KEYITEMS`. They never appear in rooms and can't be taken or dropped, so every player gets their own copy without breaking the item-uniqueness rule. Two rules apply:
 
-Two rules decide where a key item can be used:
+- **Step grants are temporary:** a key item given by a step must be taken back by a later step of the same quest (e.g. George's loaf, delivered to Kassandra).
+- **Rewards are kept** and can be required by any other quest: *Arms Dealer* takes the Rusty Dagger and Small Gem (rewards of Kassandra's two quests) and gives back the Ornate Dagger. It can be accepted early but not finished until the player holds both items.
 
-- **Step grants are temporary.** A key item given by a quest step (`grants_key_items`, e.g. George's loaf) must be taken back by a later step of the same quest (`receives_key_items`, e.g. Kassandra). This keeps quest props from piling up in the player's key items.
-- **Rewards are kept.** A key item given as a quest reward stays with the player and can be required by any other quest. *Arms Dealer* uses this: Brannoc takes the Rusty Dagger and the Small Gem, the rewards of the two Kassandra quests, and gives back the Ornate Dagger. It has no `requires`, so it can be accepted early, but it can't be finished until the player holds both items.
+### Example
 
-Key items, like quest progress, last for the player's connection only.
-
-### Protocol note
-The RFC leaves quest progression to the implementer, so the `enter_area` message, the reward lines and the `missing_items_dialogue` reply are additions of this server: plain-text lines sent after the command's normal `OK` reply, not RFC-defined responses.
-
-### Validation
-`ValidateWorldData` rejects quest steps whose target NPC or zone doesn't exist, `battle` steps targeting an NPC that isn't an attackable `enemy`, `talk_to` steps targeting a `healer`, `talk_to` steps whose `missing_items_dialogue` is set but blank, and `enter_area` steps with an empty `message`.
-
-Key item references are checked too: every key item named in a step or reward must exist in `key_items:`; a step can't grant the same key item twice; every step grant must be received back later in the same quest (`QUEST_KEY_ITEMS_NOT_BALANCED`); and every received key item must either be granted earlier in the same quest or be granted somewhere in the world. Because the validator only knows which items exist, not which order a player does quests in, *Arms Dealer*'s hand-over is also checked at runtime: the step simply won't advance until the player holds the items.
-
-Example (`world.yaml`) — a two-quest chain, where the second quest only becomes available once the first is completed, and a fetch quest that requires both chain rewards:
+One quest from `server/world.yaml` (dialogue shortened):
 
 ```yaml
-quests:
-  a_loaf_for_the_needy:
-    name: A loaf for the needy
-    description: George seems to need help with his daily chores.
-    type: delivery
-    requires: ""
-    steps:
-      - talk_to: george
-        dialogue: "Hey there! Be a champ and take this [keyitem.Loaf] to Kassandra for me, would you? Thanks!"
-        grants_key_items:
-          - "key_item.loaf_of_bread"
-      - talk_to: kassandra
-        dialogue: "What's this, a loaf of bread? So George thinks to woo me with crumbs... ..."
-        receives_key_items:
-          - "key_item.loaf_of_bread"
-    reward:
-      key_item: "key_item.rusty_dagger"
-
-  something_in_the_well:
-    name: Something in the Well
-    description: Strange sounds rise from the old well at night. Kassandra means to know why.
-    type: battle
-    requires: a_loaf_for_the_needy
-    steps:
-      - talk_to: kassandra
-        dialogue: "The well sings at night. ..."
-      - enter_area: old_well
-        message: You hear eerie sounds coming from deep inside the well...
-      - battle: cave_bat
-      - talk_to: kassandra
-        dialogue: "Only a bat... Pity. ..."
-    reward:
-      key_item: "key_item.small_gem"
-      gold: 20
-
-  arms_dealer:
-    name: Arms Dealer
-    description: Brannoc can mend any blade. He'll also tell you about his arms, at length, whether you ask or not.
-    type: fetch
-    requires: ""
-    steps:
-      - talk_to: brannoc
-        dialogue: "Come for your daily viewing of these impeccable biceps, have you? ..."
-      - talk_to: brannoc
-        receives_key_items:
-          - "key_item.rusty_dagger"
-          - "key_item.small_gem"
-        missing_items_dialogue: "Back again without anything to fix? ..."
-        dialogue: "Right, stand back. ..."
-    reward:
-      key_item: "key_item.ornate_dagger"
-
-key_items:
-  loaf_of_bread:
-    name: Loaf of Bread
-    description: A loaf of bread, apparently. ...
-
-  ornate_dagger:
-    name: Ornate Dagger
-    description: Beautifully restored, its gem glistens with a familiar warmth. ...
-    skill_boost: 2
+a_loaf_for_the_needy:
+  name: A loaf for the needy
+  description: George seems to need help with his daily chores.
+  type: delivery
+  requires: ""
+  steps:
+    - talk_to: george
+      dialogue: "Hey there! Be a champ and take this [keyitem.Loaf] to Kassandra for me, would you? Thanks!"
+      grants_key_items:
+        - "key_item.loaf_of_bread"
+    - talk_to: kassandra
+      dialogue: "What's this, a loaf of bread? ..."
+      receives_key_items:
+        - "key_item.loaf_of_bread"
+  reward:
+    key_item: "key_item.rusty_dagger"
 ```
 
-(Dialogue, descriptions and the `key_items:` list shortened here; the full data is in `server/world.yaml`.)
+Quest data is validated at startup (see [World Design → Validation](#validation)).
 
 [↑ Back to top](#top)
 
 ## World Design
 
-A small, light-hearted fantasy town, defined in `server/world.yaml` and loaded at startup.
+A small, light-hearted fantasy town, defined in `server/world.yaml`. New players start in the Taverne; defeated players respawn in the Chapel.
 
 ### Rooms (10)
-New players start in the Taverne; defeated players respawn in the Chapel.
 
 | Room | Exits | NPCs |
 |---|---|---|
-| The Taverne (`taverne`) | east → Fountain Square | George |
+| Taverne (`taverne`) | east → Fountain Square | George |
 | Fountain Square (`fountain_square`) | north → Chapel, east → Old Well, south → Market Square, west → Taverne | Kassandra |
 | Chapel (`chapel`) | east → Churchyard, south → Fountain Square | Father Tieu |
 | Churchyard (`churchyard`) | south → Old Well, west → Chapel | Osric |
@@ -470,83 +341,82 @@ New players start in the Taverne; defeated players respawn in the Chapel.
 | Mill (`mill`) | north → Old Well, east → Fallow Field, west → Market Square | Hilde |
 | Fallow Field (`fallow_field`) | west → Mill | Barbarian |
 
-The map has two loops that share the Old Well (Fountain Square → Chapel → Churchyard → Old Well → Fountain Square, and Fountain Square → Market Square → Mill → Old Well → Fountain Square) plus three dead-end branches (Cistern, Smithy, Fallow Field), so a full circuit is possible. No room is empty: each has an NPC or a fixed item.
+Two loops share the Old Well (Fountain Square → Chapel → Churchyard → Old Well, and Fountain Square → Market Square → Mill → Old Well), with three dead-end branches (Cistern, Smithy, Fallow Field). Every room has an NPC or a fixed item.
 
-### NPCs (9), 4 roles
-- **Quest givers:** George (taverne keeper), Kassandra (a mysterious figure by the fountain), Bertha (market vendor), Brannoc (smith).
-- **Healer:** Father Tieu (chapel priest).
-- **General:** Osric (gravedigger), Hilde (miller) — dialogue only; NPCs cycle through their lines on each `TALK`.
-- **Enemies:** the Barbarian (hp 90, the tougher fight) and the Cave Bat (hp 36 but hard to hit, dex 30).
+### NPCs, items and quests
 
-### Items (19, 7 obtainable)
-Obtainable: Dented Tankard, Empty Coin Purse, Prayer Candle, Wooden Bucket, Metal Shavings, Handful of Wheat Husks, Field Flower. The rest (e.g. Weathered Fountain, Wanted Poster, Anvil, Water Wheel) are fixed scenery: they show up in `LOOK` but can't be taken. Key items (Loaf of Bread, Rusty Dagger, Small Gem, Ornate Dagger) are quest items held separately from the normal inventory (see Quest System → Key items).
+- **NPCs (9, 4 roles):** quest givers George, Kassandra, Bertha and Brannoc; healer Father Tieu; general NPCs Osric and Hilde, who cycle through their lines; enemies the Barbarian (90 HP) and the Cave Bat (36 HP, but dex 30).
+- **Items (19, 7 obtainable):** Dented Tankard, Empty Coin Purse, Prayer Candle, Wooden Bucket, Metal Shavings, Handful of Wheat Husks and Field Flower can be taken; the rest (e.g. Weathered Fountain, Anvil, Water Wheel) are fixed scenery. Key items: Loaf of Bread, Rusty Dagger, Small Gem, Ornate Dagger.
+- **Quests (4):**
+  - *A loaf for the needy* (George): deliver bread to Kassandra. Reward: Rusty Dagger.
+  - *Something in the Well* (Kassandra, requires the first quest): find what makes noise in the well. Reward: Small Gem and 20 gold.
+  - *A Lesson in Manners* (Bertha): defeat the brute who wrecked her stall. Reward: 10 gold.
+  - *Arms Dealer* (Brannoc): bring the Rusty Dagger and Small Gem. Reward: Ornate Dagger (+2 battle skill).
 
-### Quests (4)
-- *A loaf for the needy* (George) — deliver bread to Kassandra. Reward: rusty dagger.
-- *Something in the Well* (Kassandra, requires the first quest) — find out what is making noise in the old well. Reward: small gem and 20 gold.
-- *A Lesson in Manners* (Bertha) — deal with the brute who wrecked her stall. Reward: 10 gold.
-- *Arms Dealer* (Brannoc) — bring him the Rusty Dagger and the Small Gem to have the blade restored. Reward: ornate dagger (+2 battle skill).
+### Validation
 
-### Validation at startup
-When `world.yaml` is parsed, every exit direction must be one of the six movement directions, and a room can't list the same direction twice (e.g. `north` and `North`); either problem stops the server with a parse error naming the direction and the room.
+The server refuses to start, listing every problem, if `world.yaml` breaks any of these rules:
 
-Then `ValidateWorldData` (`worldDataValidator.go`) checks that every exit, spawn, item and quest reference resolves; every room needs a name and at least one exit; items can only be placed once; NPC roles must match their data (quest givers need quests, enemies must be attackable with valid stats, healers need a heal line and can't be attacked); key items need a name and description and can't have a negative `skill_boost`; no two items or key items may share a display name (compared case-insensitively, so name lookups are never ambiguous); quest key item references must be consistent (see Quest System → Validation); the starting and respawn rooms must exist; and the minimum counts are enforced (≥8 rooms, ≥4 items, ≥2 obtainable, ≥3 NPC roles, ≥2 quests). Any failure stops the server with a list of every problem found.
-
-After `ValidateWorldData` passes, two map checks run before the server starts listening: every room must be reachable from the starting room (breadth-first search, `validateMapConnectivity`), and the map must contain at least one loop (depth-first search, `mapLoopExists`). If either check fails, the server logs the problem and exits. Together with the 8-room minimum, this enforces the subject's requirement of at least 8 interconnected rooms forming a loop.
+- **Rooms and map:** at least 8 rooms; every room has a name, a description and an exit; exits use the six directions without duplicates and lead to existing rooms; every room is reachable from the start (breadth-first search) and the map has at least one loop (depth-first search); the starting and respawn rooms exist.
+- **Items:** each item is placed only once; items and key items need names and descriptions; no two share a display name (case-insensitive).
+- **NPCs:** roles match their data (quest givers have quests; enemies are attackable with `str` and `battle_skill` ≥ 1 and `dex` ≤ 90; healers have a heal line and can't be attacked).
+- **Quests:** step targets exist; `battle` steps target an enemy; `talk_to` steps don't target a healer; `enter_area` steps have a message; every key item reference exists; step grants are received back within the same quest; received items are granted somewhere.
+- **Minimums:** ≥ 4 items, ≥ 2 obtainable, ≥ 3 NPC roles, ≥ 2 quests.
 
 [↑ Back to top](#top)
 
 ## Server Logging
 
 ### Format and output
-Structured JSON logging via `log/slog` (`slog.NewJSONHandler`), one JSON object per line, written to stderr, with `INFO`/`WARN`/`ERROR` levels. Every line has a `time` (RFC 3339 timestamp), a `level` and a `msg`, plus attributes such as `player`, `command`, `args` and `remote` (the client's address). JSON output plus slog's timestamps satisfy the "structured, timestamped, parseable" logging requirement. Example (values made up):
+
+Structured JSON logging with `log/slog`, one object per line on stderr, with `INFO`, `WARN` and `ERROR` levels. Every line has a `time` (RFC 3339), `level` and `msg`, plus attributes such as `player`, `command`, `args` and `remote`:
 
 ```json
 {"time":"2026-10-09T21:14:03+02:00","level":"INFO","msg":"PLAYER_CONNECTED","remote":"127.0.0.1:51234","player":"alice","args":"alice"}
 ```
 
 ### Event types
-- **Commands:** every command handler logs its outcome with player name, command, and relevant args/state. A failed command is logged with the protocol error as `msg` (e.g. `ERR 301 NO_EXIT`).
-- **Server responses:** `SYS_MESSAGE` records a reply or event the server sent (`message`, with `player` or `recipient`). Events such as `EVT ROOM PRESENCE ENTER alice` are logged with the event text as `msg` or in a `SYS_MESSAGE`.
-- **Connections:** `PLAYER_CONNECTED`, `PLAYER_QUIT`, `CONNECTION_CLOSED_BY_CLIENT`, `CONNECTION_CLOSED_SAFELY`, `CONNECTION_IDLE_TIMEOUT_ERROR`, `CONNECTION_READ_ERROR`, `SET_READ_DEADLINE_ERROR` and `PLAYER_CLEANUP_COMPLETE` (plus per-zone leave events on disconnect), logged with the remote address.
-- **Abuse:** spam timeouts, soft bans and connection-flood detection are logged at `WARN` (see below).
-- **Startup and shutdown:** `WORLD_DATA_VALIDATED`, `MAP_CONNECTIVITY_VALIDATED`, `MAP_LOOP_VALIDATED`, `SHUTDOWN_SIGNAL_RECEIVED`, `PERFORMING_CLEANUP` and `SERVER_SHUTTING_DOWN`. World validation problems are logged at `ERROR`, one line each, and stop the server.
 
-Levels: `INFO` for normal activity, `WARN` for abuse and unexpected but survivable situations, `ERROR` for failures (internal errors, invalid world data).
+- **Commands:** each handler logs its outcome with player, command and arguments; failures use the protocol error as `msg` (e.g. `ERR 301 NO_EXIT`).
+- **Replies and events sent:** `SYS_MESSAGE` with the `message` and its `player` or `recipient`.
+- **Connections:** `PLAYER_CONNECTED`, `PLAYER_QUIT`, `CONNECTION_CLOSED_BY_CLIENT`, `CONNECTION_CLOSED_SAFELY`, `CONNECTION_IDLE_TIMEOUT_ERROR`, `CONNECTION_READ_ERROR`, `SET_READ_DEADLINE_ERROR`, `PLAYER_CLEANUP_COMPLETE`.
+- **Startup and shutdown:** `WORLD_DATA_VALIDATED`, `MAP_CONNECTIVITY_VALIDATED`, `MAP_LOOP_VALIDATED`, `SHUTDOWN_SIGNAL_RECEIVED`, `PERFORMING_CLEANUP`, `SERVER_SHUTTING_DOWN`; world validation problems at `ERROR`.
+- **Abuse:** timeouts, bans, oversized lines and connection floods at `WARN`.
 
 ### Monitoring and detecting abuse
-The server logs to stderr, so redirect it to keep a file and read it with `tail` and `grep`:
 
 ```
-make run-server 2> server.log                       # in one terminal
-tail -f server.log                                  # in another: follow the log live
-grep '"level":"WARN"' server.log                    # only warnings
-grep -E 'ERR (675|747|750|760)' server.log          # only rate-limit, line-length and ban events
+make run-server 2> server.log                  # keep the log in a file
+tail -f server.log                             # follow it live
+grep '"level":"WARN"' server.log               # warnings only
+grep -E 'ERR (675|747|750|760)' server.log     # rate-limit, line-length and ban events
 ```
 
-The last command shows only rate-limiting and ban events:
-
-- **Command flooding:** `ERR 747` (a query was rejected because the query bucket is empty) and `ERR 750` (a timeout was applied, or the player kept sending input during one) appear in the `message` of `WARN` lines, with the `player` and `remote`; `time_remaining` shows how long a timeout still lasts. `"reason":"query bucket flooding"` marks a player who got a timeout for flooding queries. To keep the log small, `ERR 747` is logged only for the first rejection in a window and then for every 5th one.
-- **Oversized lines:** `ERR 675 MESSAGE_TOO_LONG` is logged for the first line over 1024 bytes, and a second entry ending in `5TH_STRIKE_CLOSING_CONNECTION` is logged when the connection is closed.
-- **Rapid connections and repeated violations:** `ERR 760 SOFTBANNED_FROM_SERVER` is logged as the `msg` of a `WARN` line with the address (`remote`). Several `ERR 750` lines for one `player` followed by `ERR 760` show a client that ignored its timeout.
+- **Command flooding:** `ERR 747` and `ERR 750` in the `message` of `WARN` lines, with `player` and `remote`; `time_remaining` shows how long a timeout lasts, and `"reason":"query bucket flooding"` marks a timeout caused by queries. `ERR 747` is logged for the first rejection in a window and then every 5th.
+- **Oversized lines:** `ERR 675 MESSAGE_TOO_LONG` for the first one, and an entry ending in `5TH_STRIKE_CLOSING_CONNECTION` when the connection is closed.
+- **Bans:** `ERR 760 SOFTBANNED_FROM_SERVER` with the `remote` address. Several `ERR 750` lines for one player followed by `ERR 760` show a client that ignored its timeout.
 
 [↑ Back to top](#top)
 
 ## Group Contributions
 
-The Answer Protocol is designed as a group project for 2–3 learners. As no eligible peers were available to form a group, I completed the entire project on my own.
+TAP is designed for 2–3 learners. As no eligible peers were available, I completed the whole project on my own:
 
 - **Server** (Go): protocol, world loading and validation, combat, quests
 - **CLI clients**: Go and Rust versions
-- **World design**: rooms, NPCs, items, dialogue and quests
-- **Documentation**: this README
 - **GUI client** (Go, Fyne): in progress
+- **World design**: rooms, NPCs, items, dialogue and quests
+- **Documentation**: this README and the GUI design record
 
 [↑ Back to top](#top)
 
 ## Building and Running
 
-Requirements: Go (the server's `go.mod` targets Go 1.27; single dependency `gopkg.in/yaml.v3`), Rust/Cargo for the Rust CLI (dependencies `anyhow`, `ctrlc`), and for the GUI client Fyne v2.8.1 (downloaded by `go mod`), which needs cgo: a C compiler and the platform's graphics development libraries must be installed (see Fyne's Getting Started page).
+Requirements:
+
+- Go (the server targets Go 1.27; dependency `gopkg.in/yaml.v3`)
+- Rust/Cargo for the Rust CLI (dependencies `anyhow`, `ctrlc`)
+- for the GUI, Fyne v2.8.1 (downloaded by `go mod`), which needs cgo: a C compiler and the platform's graphics libraries (see Fyne's Getting Started page)
 
 From the repository root:
 
@@ -556,72 +426,72 @@ From the repository root:
 | `make run-server` | Starts the server on TCP port 4242 (reads `server/world.yaml`) |
 | `make run-client` | Starts the Rust CLI client |
 | `make run-go-client` | Starts the Go CLI client |
-| `make run-client-gui` | Starts the GUI client (the server must be running) |
-| `make lint` | `go vet` on the server, the Go CLI and the GUI, `cargo check` on the Rust CLI |
+| `make run-client-gui` | Starts the GUI client |
+| `make lint` | `go vet` on the server, Go CLI and GUI; `cargo check` on the Rust CLI |
 | `make clean` | `go clean` / `cargo clean` |
 
-`make -C server format`, `make -C CLI format` and `make -C GUI format` run `gofmt` (and `cargo fmt` for the CLI). `make build-GUI` builds only the GUI client. All three clients connect to `localhost:4242`, so start the server first.
-
-Both CLI clients connect to `localhost:4242`, prompt for a username, and send `CONNECT <username>` automatically. After that, type protocol commands directly (e.g. `LOOK`, `MOVE east`, `TALK george`). `QUIT`, Ctrl+C or Ctrl+D disconnects.
+`make -C <server|CLI|GUI> format` runs `gofmt` (and `cargo fmt` for the CLI); `make build-GUI` builds only the GUI. All clients connect to `localhost:4242`, so start the server first. In the CLI, type protocol commands directly (e.g. `LOOK`, `MOVE east`, `TALK george`); `QUIT`, Ctrl+C or Ctrl+D disconnects.
 
 [↑ Back to top](#top)
 
 ## Testing
 
-NPCs are addressed by their display name, case-insensitively (e.g. `TALK george`, `ATTACK cave bat`), or by their full ID (`npc.cave_bat`).
+NPCs and items can be named by display name (case-insensitive, e.g. `ATTACK cave bat`) or full ID (`npc.cave_bat`).
 
 ### Multiplayer
-Start the server, then open several terminals and run a CLI client in each with a different username. Check that `WHO`, `CHAT ROOM`/`CHAT GLOBAL`, room enter/leave events, groups (`GROUP CREATE`/`INVITE`/`JOIN`/`LEAVE`), and item uniqueness (one player `TAKE`s an item, the other no longer sees it in `LOOK`; `DROP` makes it available again) all behave as expected.
+
+Run several CLI clients with different names. Check `WHO`, `CHAT ROOM`/`GLOBAL`/`GROUP`, room enter/leave events, groups (`GROUP CREATE`/`INVITE`/`JOIN`/`LEAVE`), and item uniqueness: once one player `TAKE`s an item, the other no longer sees it in `LOOK`, and `DROP` brings it back.
 
 ### Combat
-Go to the Fallow Field (taverne → east → south → east → east) and `ATTACK barbarian` repeatedly until the fight ends. While fighting, try `MOVE` (refused with `666`), and from a second client try to `ATTACK` the same NPC (refused with `405`). Lose a fight to check the respawn in the chapel at half HP, then `TALK father tieu` to heal and check `STATUS`. Try `FLEE` mid-fight.
+
+Go to the Fallow Field (from the Taverne: east, south, east, east) and `ATTACK barbarian` until the fight ends. During the fight, `MOVE` is refused (`666`) and a second client's `ATTACK barbarian` is refused (`405`). Lose a fight to check the respawn in the chapel at half HP, then `TALK father tieu` and check `STATUS`. Try `FLEE` mid-fight.
 
 ### Quests
-A full walkthrough of the quest chain:
-1. In the Taverne: `QUEST george` (accepts the quest), `TALK george` → the reply ends with `(You receive Loaf of Bread)`. `KEYITEMS` now lists the loaf; `EXAMINE KEYITEM loaf of bread` describes it.
-2. Fountain Square: `TALK kassandra` → the loaf is handed over, quest complete, reward line shown. `QUESTS` shows it as completed.
-3. `QUEST kassandra` now accepts *Something in the Well*; `TALK kassandra`.
-4. `MOVE east` into the Old Well → the eerie-sounds message appears.
-5. `MOVE down`, `ATTACK cave bat` until it is defeated.
-6. Back to Fountain Square, `TALK kassandra` → quest complete; `GOLD` shows 20.
-7. In the Smithy: `QUEST brannoc`, `TALK brannoc` (hint), then `TALK brannoc` again → the Rusty Dagger and Small Gem are handed over, the Ornate Dagger is received with `+2 BattleSkill`.
 
-*Arms Dealer* can also be accepted early: before both items are held, `TALK brannoc` gives his missing-items line and `QUESTS` shows `"quest_items":"1/2"` (or `0/2`).
+1. Taverne: `QUEST george`, then `TALK george`; the dialogue ends with `(You receive Loaf of Bread)` and `KEYITEMS` lists the loaf.
+2. Fountain Square: `TALK kassandra` hands over the loaf and completes the quest; `QUESTS` shows it as completed.
+3. `QUEST kassandra` accepts *Something in the Well*; `TALK kassandra`.
+4. `MOVE east` into the Old Well shows the eerie-sounds message.
+5. `MOVE down` and `ATTACK cave bat` until it is defeated.
+6. Back in Fountain Square, `TALK kassandra` completes the quest; `GOLD` shows 20.
+7. Smithy: `QUEST brannoc`, `TALK brannoc` (hint), `TALK brannoc` again hands over the dagger and gem and gives the Ornate Dagger with `+2 BattleSkill`.
 
-*A Lesson in Manners* works the same way with Bertha in the Market Square and the Barbarian in the Fallow Field.
+*Arms Dealer* can also be accepted early: `TALK brannoc` then gives his missing-items line, and `QUESTS` shows `"quest_items":"0/2"` or `"1/2"`. *A Lesson in Manners* works like the Cave Bat quest, with Bertha and the Barbarian.
 
 ### EXAMINE
-`EXAMINE ITEM dented tankard` in the Taverne (also after `TAKE dented tankard`), `EXAMINE NPC george` (shows `npc_role`), `EXAMINE KEYITEM rusty dagger` before and after handing it to Brannoc (`ITEM_NOT_IN_INVENTORY` once it's gone), and `EXAMINE FOO x` (`INVALID_ARGS`).
+
+`EXAMINE ITEM dented tankard` (in the Taverne, also after taking it), `EXAMINE NPC george` (shows `npc_role`), `EXAMINE KEYITEM rusty dagger` before and after handing it to Brannoc (`ITEM_NOT_IN_INVENTORY` afterwards), and `EXAMINE FOO x` (`INVALID_ARGS`).
 
 ### GUI
-Start the server, then `make run-client-gui`. A name that is empty or one character long is refused in the window without contacting the server, and a name that is already in use shows `ERR 201`. Stopping the server while the GUI is connected should bring back the login screen. For the game screen, compare the client with [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md), which lists every element and the behaviour expected from it.
+
+`make run-client-gui` with the server running. A name that is empty or one character long is refused without contacting the server; a name in use shows `ERR 201`; stopping the server brings back the login screen. Compare the game screen with [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
 
 ### World validation
-Break `world.yaml` on purpose (an exit to a missing room, an exit with an unknown direction such as `northwest`, a quest step targeting a missing NPC, a healer without `heal_dialogue`, a key item with the same name as an item, a `receives_key_items` entry nobody grants, a step grant that is never received back) and check the server refuses to start and lists each problem.
+
+Break `world.yaml` on purpose (an exit to a missing room, a direction like `northwest`, a quest step targeting a missing NPC, a healer without `heal_dialogue`, a key item named like an item, a step grant that is never received back) and check that the server refuses to start and lists each problem.
 
 [↑ Back to top](#top)
 
 ## Resources
 
-- RFC 42TAP (attached protocol spec) — primary reference for commands, events, and error codes.
-- [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md) (in this repository) — design record for the GUI client: layout, elements and decisions.
-- Go documentation: [`net`](https://pkg.go.dev/net), [`log/slog`](https://pkg.go.dev/log/slog), [`sync`](https://pkg.go.dev/sync) and [`gopkg.in/yaml.v3`](https://pkg.go.dev/gopkg.in/yaml.v3)
-- Fyne (GUI toolkit): [documentation](https://docs.fyne.io/) and [API reference](https://pkg.go.dev/fyne.io/fyne/v2)
-- Rust crates used by the Rust CLI: [`anyhow`](https://docs.rs/anyhow) and [`ctrlc`](https://docs.rs/ctrlc)
+- RFC 42TAP (attached protocol spec): commands, events and error codes
+- [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md): design record for the GUI client
+- Go documentation: [`net`](https://pkg.go.dev/net), [`log/slog`](https://pkg.go.dev/log/slog), [`sync`](https://pkg.go.dev/sync), [`gopkg.in/yaml.v3`](https://pkg.go.dev/gopkg.in/yaml.v3)
+- Fyne: [documentation](https://docs.fyne.io/) and [API reference](https://pkg.go.dev/fyne.io/fyne/v2)
+- Rust crates: [`anyhow`](https://docs.rs/anyhow), [`ctrlc`](https://docs.rs/ctrlc)
 
 ### AI Usage
-AI usage (Claude), used during development for:
-  - Running `golangci-lint` against the server, since it couldn't be installed locally
-  - Identifying a softban bypass bug (ban keys included the client's ephemeral port)
-  - Help brainstorming ideas during the designing statge of the quest data model and response shapes
-  - Spotting concurrency bugs: a cross-zone mutex-ordering deadlock risk, a self-deadlock when a player disconnects mid-fight, and lock/unlock pairing in the quest-step hooks
-  - Spotting a redundant-recursion bug in the map cycle-detection helper
-  - Suggesting world-building ideas (room layout, NPCs, items, draft descriptions and dialogue), which were then edited and chosen by hand
-  - Simulating fights to help balance enemy stats
-  - Talking through the key item design (separating key items from world items, the step-grant rule) and its validation rules, and reviewing the `EXAMINE`, `KEYITEMS` and `quest_items` code
-  - Reviewing code changes (e.g. error wrapping in the login path) and checking `world.yaml` for broken references
-  - GUI client: explaining Fyne's API and Go concurrency patterns, and reviewing the connection layer, login screen, response parser and game screen
-  - Reviewing the anti-spam rate-limiting code
-  - Drafting and formatting this README, and checking it against the subject and the code
+
+AI (Claude) was used during development for:
+
+- Running `golangci-lint` against the server, since it couldn't be installed locally
+- Brainstorming the quest data model, the key item design and the reply shapes
+- Spotting bugs: a softban bypass (ban keys included the client's port), a cross-zone mutex-ordering deadlock risk, a self-deadlock when a player disconnects mid-fight, lock/unlock pairing in the quest-step hooks, and redundant recursion in the map cycle check
+- Suggesting world-building ideas (layout, NPCs, items, draft descriptions and dialogue), which were then edited and chosen by hand
+- Simulating fights to balance enemy stats
+- Reviewing code: the login path, rate limiting, `EXAMINE`, `KEYITEMS`, `quest_items`, and checking `world.yaml` for broken references
+- Checking the server's replies and events against the RFC and the subject PDF
+- GUI client: explaining Fyne's API and Go concurrency patterns, and reviewing the connection layer, parser, game screen and battle log
+- Drafting and formatting this README and the GUI design record, and checking them against the subject and the code
 
 [↑ Back to top](#top)

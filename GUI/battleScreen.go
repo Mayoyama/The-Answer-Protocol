@@ -7,7 +7,10 @@ import (
 	"fyne.io/fyne/v2"
 )
 
-const battleIdleTimeout time.Duration = time.Second * 10
+const (
+	BattleIdleTimeout  time.Duration = time.Second * 10
+	BattleLogHideDelay time.Duration = time.Second * 5
+)
 
 func (cr *CommandRouter) setBattleMode(on bool) {
 	if on == cr.InBattle {
@@ -20,24 +23,32 @@ func (cr *CommandRouter) setBattleMode(on bool) {
 		cr.BattleTimer.Stop()
 	}
 
-	oTS := cr.Game.OverlayTopSection
-
-	fyne.Do(func() {
-		if on {
-			oTS.BoxWasVisible = oTS.ZoneLookContent.Visible()
-			oTS.ZoneLookContent.Hide()
-			oTS.BattleLogContent.Show()
-
-		} else {
-			oTS.BattleLogContent.Hide()
-
-			if oTS.BoxWasVisible {
-				oTS.ZoneLookContent.Show()
-			}
+	if on {
+		if cr.BattleLogHideTimer != nil {
+			cr.BattleLogHideTimer.Stop()
 		}
 
-		oTS.BattleSwapStack.Refresh()
-	})
+		targetName := IDToLabel(cr.AttackTargetName)
+
+		if targetName == "" {
+			targetName = "Enemy NPC"
+		}
+
+		separator := fmt.Sprintf("=========== Battle: %s ===========", targetName)
+
+		oTS := cr.Game.OverlayTopSection
+
+		fyne.Do(func() {
+			oTS.BattleLog.addLine(separator)
+			oTS.ZoneLookContent.Hide()
+			oTS.BattleLogContent.Show()
+			oTS.BattleSwapStack.Refresh()
+			oTS.BattleLog.Scroll.ScrollToBottom()
+		})
+
+	} else {
+		cr.startBattleLogHideTimer()
+	}
 }
 
 func (cr *CommandRouter) restartBattleTimer() {
@@ -49,7 +60,7 @@ func (cr *CommandRouter) restartBattleTimer() {
 
 	timeoutChan := cr.battleScreenTimeout
 
-	cr.BattleTimer = time.AfterFunc(battleIdleTimeout, func() {
+	cr.BattleTimer = time.AfterFunc(BattleIdleTimeout, func() {
 		select {
 		case timeoutChan <- struct{}{}:
 		default:
@@ -58,11 +69,26 @@ func (cr *CommandRouter) restartBattleTimer() {
 }
 
 func (cr *CommandRouter) handleBattleScreenTimeout() {
-	if time.Since(cr.LastAttack) < battleIdleTimeout {
+	if time.Since(cr.LastAttack) < BattleIdleTimeout {
 		return
 	}
 
 	cr.setBattleMode(false)
+}
+
+func (cr *CommandRouter) startBattleLogHideTimer() {
+	if cr.BattleLogHideTimer != nil {
+		cr.BattleLogHideTimer.Stop()
+	}
+
+	hideChan := cr.battleLogHide
+
+	cr.BattleLogHideTimer = time.AfterFunc(BattleLogHideDelay, func() {
+		select {
+		case hideChan <- struct{}{}:
+		default:
+		}
+	})
 }
 
 func (cr *CommandRouter) handleBattle(reply ReplyContent) {
@@ -84,6 +110,19 @@ func (cr *CommandRouter) handleBattle(reply ReplyContent) {
 	}
 }
 
+func (cr *CommandRouter) handleBattleLogHide() {
+	if cr.InBattle {
+		return
+	}
+
+	oTS := cr.Game.OverlayTopSection
+
+	fyne.Do(func() {
+		oTS.BattleLogContent.Hide()
+		oTS.BattleSwapStack.Refresh()
+	})
+}
+
 func (cr *CommandRouter) buildAttackRoundString(data AttackParse) string {
 	var (
 		battleString string
@@ -98,7 +137,7 @@ func (cr *CommandRouter) buildAttackRoundString(data AttackParse) string {
 	targetName := IDToLabel(cr.AttackTargetName)
 
 	if targetName == "" {
-		targetName = "Enemy"
+		targetName = "Enemy NPC"
 	}
 
 	playerFirst = data.PlayerInitRoll >= data.TargetInitRoll
@@ -152,4 +191,13 @@ func (cr *CommandRouter) buildAttackRoundString(data AttackParse) string {
 	}
 
 	return fmt.Sprintf("%s\n%s", initString, battleString)
+}
+
+func (cr *CommandRouter) logFlee(reply ReplyContent) {
+	if reply.BattleFled {
+		fyne.Do(func() {
+			cr.Game.OverlayTopSection.BattleLog.addLine("You fled the battle.")
+			cr.Game.OverlayBottomSection.LogWindow.addLine("You fled the battle.")
+		})
+	}
 }

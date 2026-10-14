@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -48,6 +49,11 @@ type NPCStats struct {
 	Strength    int `yaml:"str"`
 	BattleSkill int `yaml:"battle_skill"`
 	Dexterity   int `yaml:"dex"`
+}
+
+type TalkReponse struct {
+	NPC      string `json:"npc,omitempty"`
+	Dialogue string `json:"dialogue"`
 }
 
 // BattleDialogue holds an enemy's fight start, player-victory and NPC-victory lines.
@@ -200,6 +206,7 @@ func handleTalk(target string, player *Player) (string, error) {
 	}
 
 	sname := spawn.getNPCName()
+	npcID := spawn.getNPCID()
 
 	if npcRole := spawn.getNPCRole(); npcRole == "healer" && pHP < pMaxHP {
 		healText := spawn.getNPCHealerString()
@@ -213,7 +220,13 @@ func handleTalk(target string, player *Player) (string, error) {
 			slog.Warn(err.Error(), "player", pname, "command", "TALK", "npc", sname)
 		}
 
-		healMessage := fmt.Sprintf("OK %s", healText)
+		healRes, err := json.Marshal(TalkReponse{NPC: npcID, Dialogue: healText})
+
+		if err != nil {
+			return currLoc, JSONErr
+		}
+
+		healMessage := "OK " + string(healRes)
 
 		_, _ = fmt.Fprintln(player.Conn, healMessage)
 		slog.Info("SYS_MESSAGE", "player", pname, "message", healMessage, "command", "TALK", "NPC", sname, "loc", currLoc)
@@ -223,8 +236,16 @@ func handleTalk(target string, player *Player) (string, error) {
 
 	pq, dialogue, completedQuest := spawn.getDialogue(player)
 
-	_, _ = fmt.Fprintln(player.Conn, "OK "+dialogue)
-	slog.Info("SYS_MESSAGE", "player", pname, "message", "OK "+dialogue, "command", "TALK", "NPC", sname, "loc", currLoc)
+	talkRes, err := json.Marshal(TalkReponse{NPC: npcID, Dialogue: dialogue})
+
+	if err != nil {
+		return currLoc, JSONErr
+	}
+
+	talkMessage := "OK " + string(talkRes)
+
+	_, _ = fmt.Fprintln(player.Conn, talkMessage)
+	slog.Info("SYS_MESSAGE", "player", pname, "message", talkMessage, "command", "TALK", "NPC", sname, "loc", currLoc)
 
 	if completedQuest {
 		pq.completeQuest(player)

@@ -261,6 +261,10 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 
 				switch err {
 				case nil:
+				case JSONErr:
+					_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
+					slog.Error(JSONErr.Error(), "player", pname, "command", command, "loc", loc, "npc", args)
+
 				case InternalErr:
 					handleInternalError(player.Conn, InternalErr, loginState,
 						slog.String("player", pname),

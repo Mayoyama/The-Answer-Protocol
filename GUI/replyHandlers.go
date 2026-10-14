@@ -58,7 +58,7 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 	)
 
 	for k, v := range reply.Look.Room.Exits {
-		exit := fmt.Sprintf("%s: %s", Capitalize(k), SplitSnakeCase(v))
+		exit := fmt.Sprintf("%s: %s", Capitalize(k), IDToLabel(v))
 		roomExits = append(roomExits, exit)
 	}
 
@@ -107,17 +107,74 @@ func (cr *CommandRouter) handleMove(reply ReplyContent) {
 }
 
 func (cr *CommandRouter) handleNPCDialogue(reply ReplyContent) {
+	var npcName string
+
+	if reply.NPCName != "" {
+		npcName = IDToLabel(reply.NPCName)
+
+	} else if npcName == "" && cr.TalkTargetName != "" {
+		npcName = IDToLabel(cr.TalkTargetName)
+
+	} else {
+		npcName = "NPC"
+	}
+
+	npcLine := fmt.Sprintf("NPC (%s): %s", npcName, reply.NPCText)
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.ChatWindow.addLine(npcLine)
+	})
+
+	if reply.NPCHeal {
+		if err := cr.tc.sendButtonCommandToServer("STATUS"); err != nil {
+			cr.Game.displayGameError(err.Error())
+		}
+	}
+}
+
+func (cr *CommandRouter) handlePresence(reply ReplyContent) {
+	var actionLine string
+
+	if strings.EqualFold(reply.Presence.Direction, "enter") {
+		actionLine = fmt.Sprintf("%s enters the room.", reply.Presence.Who)
+		cr.InZoneCount++
+
+	} else {
+		actionLine = fmt.Sprintf("%s leaves the room.", reply.Presence.Who)
+		cr.InZoneCount--
+	}
+
+	inZoneText := fmt.Sprintf("Room: %d ", cr.InZoneCount)
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(actionLine)
+		cr.Game.TopSection.InRoomLabel.Text = inZoneText
+		cr.Game.TopSection.InRoomLabel.Refresh()
+	})
 
 }
 
-func (cr *CommandRouter) handleRespawn() {
-	if err := cr.tc.sendButtonCommandToServer("LOOK"); err != nil {
-		cr.Game.displayGameError(err.Error())
+func (cr *CommandRouter) handleQuest(reply ReplyContent) {
+	rewards := "Rewards: "
+
+	if reply.Quest.Reward.Gold != 0 && reply.Quest.Reward.KeyItem != "" {
+		rewards += fmt.Sprintf("Gold: %d, Key Item: %s", reply.Quest.Reward.Gold, IDToLabel(reply.Quest.Reward.KeyItem))
+
+	} else if reply.Quest.Reward.Gold != 0 {
+		rewards += fmt.Sprintf("Gold: %d", reply.Quest.Reward.Gold)
+
+	} else if reply.Quest.Reward.KeyItem != "" {
+		rewards += fmt.Sprintf("Key Item: %s", IDToLabel(reply.Quest.Reward.KeyItem))
+
+	} else {
+		rewards += "None"
 	}
 
-	if err := cr.tc.sendButtonCommandToServer("STATUS"); err != nil {
-		cr.Game.displayGameError(err.Error())
-	}
+	questLine := fmt.Sprintf("Quest Accepted! Desc: %s, %s.", reply.Quest.Description, rewards)
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(questLine)
+	})
 }
 
 func (cr *CommandRouter) handleReplyError(reply ReplyContent) {
@@ -155,6 +212,37 @@ func (cr *CommandRouter) handleReplyError(reply ReplyContent) {
 			})
 		})
 	}
+
+	errLine := fmt.Sprintf("ERROR: Code: %d, Reason: %s", reply.Err.Code, reply.Err.Text)
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(errLine)
+	})
+}
+
+func (cr *CommandRouter) handleRespawn(reply ReplyContent) {
+	var enemyName string
+
+	if cr.AttackTargetName == "" {
+		enemyName = "Enemy NPC"
+
+	} else {
+		enemyName = IDToLabel(cr.AttackTargetName)
+	}
+
+	respawnLine := fmt.Sprintf("You were defeated by %s. You wake up and mysteriously find yourself in %s.", enemyName, IDToLabel(reply.Respawned))
+
+	if err := cr.tc.sendButtonCommandToServer("LOOK"); err != nil {
+		cr.Game.displayGameError(err.Error())
+	}
+
+	if err := cr.tc.sendButtonCommandToServer("STATUS"); err != nil {
+		cr.Game.displayGameError(err.Error())
+	}
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(respawnLine)
+	})
 }
 
 func (cr *CommandRouter) handleServerCount(reply ReplyContent) {
@@ -167,31 +255,34 @@ func (cr *CommandRouter) handleServerCount(reply ReplyContent) {
 }
 
 func (cr *CommandRouter) handleStatus(reply ReplyContent) {
-	if reply.HPHeal.HealMessage != "" {
+	hp := reply.Status.HP
+	maxHP := reply.Status.MaxHP
+	status := fmt.Sprintf("Status: %s", reply.Status.Status)
 
-		fyne.Do(func() {
-			cr.Game.OverlayBottomSection.ChatWindow.addLine(reply.HPHeal.HealMessage)
-		})
+	if hp > maxHP {
+		hp = maxHP
+	}
 
-		if err := cr.tc.sendButtonCommandToServer("STATUS"); err != nil {
-			cr.Game.displayGameError(err.Error())
-		}
+	fyne.Do(func() {
+		cr.Game.TopSection.HPBar.Max = float64(maxHP)
+		cr.Game.TopSection.HPBar.SetValue(float64(hp))
+		cr.Game.OverlayTopSection.PlayerStatusLabel.SetText(status)
+	})
+}
+
+func (cr *CommandRouter) handleTakeDrop(reply ReplyContent) {
+	var actionLine string
+
+	if strings.EqualFold(reply.TakeDrop.Action, "taken") {
+		actionLine = "You pick up a " + IDToLabel(reply.TakeDrop.Item)
 
 	} else {
-		hp := reply.Status.HP
-		maxHP := reply.Status.MaxHP
-		status := fmt.Sprintf("Status: %s", reply.Status.Status)
-
-		if hp > maxHP {
-			hp = maxHP
-		}
-
-		fyne.Do(func() {
-			cr.Game.TopSection.HPBar.Max = float64(maxHP)
-			cr.Game.TopSection.HPBar.SetValue(float64(hp))
-			cr.Game.OverlayTopSection.PlayerStatusLabel.SetText(status)
-		})
+		actionLine = "You drop the " + IDToLabel(reply.TakeDrop.Item)
 	}
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(actionLine)
+	})
 }
 
 func (cr *CommandRouter) handleWho(reply ReplyContent) {

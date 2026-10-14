@@ -103,7 +103,7 @@ func handleWho(player *Player, loginState *LoginStatus, command string) {
 		return
 	}
 
-	var roomPl []string
+	roomPl := make([]string, 0)
 	currZone.ZoneMu.Lock()
 
 	for _, p := range currZone.InZone {
@@ -172,17 +172,17 @@ func handleLook(player *Player, loginState *LoginStatus) {
 		Exits:       exits,
 	}
 
-	var players []string
+	players := make([]string, 0)
 	for _, p := range area.InZone {
 		players = append(players, p.getPlayerName())
 	}
 
-	var items []string
+	items := make([]string, 0)
 	for _, item := range area.Items {
 		items = append(items, item.ItemID)
 	}
 
-	var spawns []string
+	spawns := make([]string, 0)
 	for _, npc := range area.NPCs {
 		spawns = append(spawns, npc.NPCID)
 	}

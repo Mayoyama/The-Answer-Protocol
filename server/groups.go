@@ -165,7 +165,10 @@ func (g *Group) groupInvite(inviter, player *Player) error {
 		return InGroupErr
 	}
 
-	_, _ = fmt.Fprintln(player.Conn, EvtPartyInvite(inviterName))
+	if _, err := fmt.Fprintln(player.Conn, EvtPartyInvite(inviterName)); err != nil {
+		return SendFailedErr
+	}
+
 	slog.Info("SYS_MESSAGE", "player", pname, "message", EvtPartyInvite(inviterName))
 
 	return nil

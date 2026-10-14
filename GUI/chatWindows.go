@@ -33,6 +33,7 @@ func (cw *ChatWindow) addLine(line string) {
 	cw.dropOldLines()
 
 	cw.TextWin.Refresh()
+	cw.Scroll.Refresh()
 
 	if atCWBottom {
 		cw.Scroll.ScrollToBottom()
