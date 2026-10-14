@@ -9,17 +9,29 @@ import (
 )
 
 func (cr *CommandRouter) handleChat(reply ReplyContent) {
-	var sender string
+	var (
+		sender      string
+		chatString  string
+		startBattle bool
+	)
 
 	if strings.HasPrefix(reply.Chat.Sender, "<<npc.") && strings.HasSuffix(reply.Chat.Sender, ">>") {
+		startBattle = true
+
 		nameOnly := strings.TrimSuffix(strings.TrimPrefix(reply.Chat.Sender, "<<"), ">>")
-		sender = "<<" + IDToLabel(nameOnly) + ">>"
+		sender = fmt.Sprintf("NPC (%s)", IDToLabel(nameOnly))
 
 	} else {
-		sender = reply.Chat.Sender
+		sender = fmt.Sprintf("(%s)", IDToLabel(reply.Chat.Sender))
+
 	}
 
-	chatString := fmt.Sprintf("%s (%s) >> %s", Capitalize(reply.Chat.Scope), sender, reply.Chat.Message)
+	if startBattle && strings.Contains(reply.Chat.Message, "commenced a new battle") {
+		chatString = fmt.Sprintf("⚔️ %s %s >> %s", Capitalize(reply.Chat.Scope), sender, reply.Chat.Message)
+
+	} else {
+		chatString = fmt.Sprintf("💬 %s %s >> %s", Capitalize(reply.Chat.Scope), sender, reply.Chat.Message)
+	}
 
 	fyne.Do(func() {
 		cr.Game.OverlayBottomSection.ChatWindow.addLine(chatString)
@@ -27,7 +39,7 @@ func (cr *CommandRouter) handleChat(reply ReplyContent) {
 }
 
 func (cr *CommandRouter) handleExamine(reply ReplyContent) {
-	examineString := fmt.Sprintf("Name: %s. Description: %s.", reply.Examine.Name, reply.Examine.Description)
+	examineString := fmt.Sprintf("🔍 Name: %s. Description: %s.", reply.Examine.Name, reply.Examine.Description)
 
 	if reply.Examine.Obtainable {
 		examineString += " Obtainable: Yes."
@@ -47,6 +59,27 @@ func (cr *CommandRouter) handleGold(reply ReplyContent) {
 
 	fyne.Do(func() {
 		cr.Game.OverlayTopSection.GoldLabel.SetText(goldString)
+		// cr.Game.OverlayBottomSection.LogWindow.addLine("💰 " + goldString)
+	})
+}
+
+func (cr *CommandRouter) handleKeyItems(reply ReplyContent) {
+	var keyItems []string
+
+	for _, id := range reply.KeyItems {
+		keyItems = append(keyItems, IDToLabel(id))
+	}
+
+	keyItemsList := "None"
+
+	if len(keyItems) > 0 {
+		keyItemsList = strings.Join(keyItems, ", ")
+	}
+
+	keyItemsLine := fmt.Sprintf("🔑 Key Items: %s", keyItemsList)
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(keyItemsLine)
 	})
 }
 
@@ -119,7 +152,14 @@ func (cr *CommandRouter) handleNPCDialogue(reply ReplyContent) {
 		npcName = "NPC"
 	}
 
-	npcLine := fmt.Sprintf("NPC (%s): %s", npcName, reply.NPCText)
+	var npcLine string
+
+	if reply.NPCHeal {
+		npcLine = fmt.Sprintf("💖 NPC (%s): %s", npcName, reply.NPCText)
+
+	} else {
+		npcLine = fmt.Sprintf("🗣️ NPC (%s): %s", npcName, reply.NPCText)
+	}
 
 	fyne.Do(func() {
 		cr.Game.OverlayBottomSection.ChatWindow.addLine(npcLine)
@@ -144,7 +184,7 @@ func (cr *CommandRouter) handlePresence(reply ReplyContent) {
 		cr.InZoneCount--
 	}
 
-	inZoneText := fmt.Sprintf("Room: %d ", cr.InZoneCount)
+	inZoneText := fmt.Sprintf("🏠 Room: %d ", cr.InZoneCount)
 
 	fyne.Do(func() {
 		cr.Game.OverlayBottomSection.LogWindow.addLine(actionLine)
@@ -158,19 +198,19 @@ func (cr *CommandRouter) handleQuest(reply ReplyContent) {
 	rewards := "Rewards: "
 
 	if reply.Quest.Reward.Gold != 0 && reply.Quest.Reward.KeyItem != "" {
-		rewards += fmt.Sprintf("Gold: %d, Key Item: %s", reply.Quest.Reward.Gold, IDToLabel(reply.Quest.Reward.KeyItem))
+		rewards += fmt.Sprintf("Gold: -> %d; Key Item -> %s", reply.Quest.Reward.Gold, IDToLabel(reply.Quest.Reward.KeyItem))
 
 	} else if reply.Quest.Reward.Gold != 0 {
-		rewards += fmt.Sprintf("Gold: %d", reply.Quest.Reward.Gold)
+		rewards += fmt.Sprintf("Gold -> %d", reply.Quest.Reward.Gold)
 
 	} else if reply.Quest.Reward.KeyItem != "" {
-		rewards += fmt.Sprintf("Key Item: %s", IDToLabel(reply.Quest.Reward.KeyItem))
+		rewards += fmt.Sprintf("Key Item -> %s", IDToLabel(reply.Quest.Reward.KeyItem))
 
 	} else {
 		rewards += "None"
 	}
 
-	questLine := fmt.Sprintf("Quest Accepted! Desc: %s, %s.", reply.Quest.Description, rewards)
+	questLine := fmt.Sprintf("Quest Accepted!\nTask: %s\n%s", reply.Quest.Description, rewards)
 
 	fyne.Do(func() {
 		cr.Game.OverlayBottomSection.LogWindow.addLine(questLine)
@@ -213,7 +253,7 @@ func (cr *CommandRouter) handleReplyError(reply ReplyContent) {
 		})
 	}
 
-	errLine := fmt.Sprintf("ERROR: Code: %d, Reason: %s", reply.Err.Code, reply.Err.Text)
+	errLine := fmt.Sprintf("⚠️ ERROR: Code: %d, Reason: %s", reply.Err.Code, reply.Err.Text)
 
 	fyne.Do(func() {
 		cr.Game.OverlayBottomSection.LogWindow.addLine(errLine)
@@ -230,7 +270,7 @@ func (cr *CommandRouter) handleRespawn(reply ReplyContent) {
 		enemyName = IDToLabel(cr.AttackTargetName)
 	}
 
-	respawnLine := fmt.Sprintf("You were defeated by %s. You wake up and mysteriously find yourself in %s.", enemyName, IDToLabel(reply.Respawned))
+	respawnLine := fmt.Sprintf("You were defeated by %s ⚰️. You wake up and mysteriously find yourself in %s.", enemyName, IDToLabel(reply.Respawned))
 
 	if err := cr.tc.sendButtonCommandToServer("LOOK"); err != nil {
 		cr.Game.displayGameError(err.Error())
@@ -246,7 +286,7 @@ func (cr *CommandRouter) handleRespawn(reply ReplyContent) {
 }
 
 func (cr *CommandRouter) handleServerCount(reply ReplyContent) {
-	onlineCount := fmt.Sprintf("Online: %d ", reply.ServerCount)
+	onlineCount := fmt.Sprintf("🌐 Online: %d ", reply.ServerCount)
 
 	fyne.Do(func() {
 		cr.Game.TopSection.OnlineLabel.Text = onlineCount
@@ -286,8 +326,8 @@ func (cr *CommandRouter) handleTakeDrop(reply ReplyContent) {
 }
 
 func (cr *CommandRouter) handleWho(reply ReplyContent) {
-	whoString := fmt.Sprintf("In zone: %v. Online Count: %d.", reply.Who.Room, reply.Who.Server)
-	onlineCount := fmt.Sprintf("Online: %d ", reply.Who.Server)
+	whoString := fmt.Sprintf("👤 In zone: %v. Online Count: %d.", reply.Who.Room, reply.Who.Server)
+	onlineCount := fmt.Sprintf("🌐 Online: %d ", reply.Who.Server)
 
 	fyne.Do(func() {
 		cr.Game.TopSection.OnlineLabel.Text = onlineCount

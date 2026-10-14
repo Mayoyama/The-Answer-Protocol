@@ -54,6 +54,45 @@ func buildLoginScreen(loginRequests chan<- string) *LoginScreen {
 	return ls
 }
 
+func (cr *CommandRouter) handleLoginRequest(name string) {
+	if cr.tc == nil {
+		newConn, err := dialServer()
+
+		if err != nil {
+			cr.Login.showErr(err.Error())
+
+			return
+		}
+
+		cr.tc = newConn
+		cr.ServerResponses = cr.tc.ServerResponses
+		cr.ServerErrs = cr.tc.ServerErrs
+	}
+
+	if cr.GotGreeting {
+		if err := cr.tc.sendButtonCommandToServer("CONNECT " + name); err != nil {
+			cr.Login.showErr(err.Error())
+		}
+
+		cr.PlayerUsername = name
+
+	} else {
+		cr.PendingName = name
+	}
+}
+
+func (cr *CommandRouter) handleServerErr(err error) {
+	fyne.Do(func() {
+		cr.Login.LoginContent.SetText("Connect to TAP Server")
+		cr.Login.ConnErr.SetText("Connection lost: " + err.Error())
+		cr.Login.ConnButton.Enable()
+		cr.Win.SetContent(cr.Login.Content)
+		cr.Win.Resize(fyne.NewSize(login_win_w, login_win_h))
+	})
+
+	cr.resetServerState()
+}
+
 func (ls *LoginScreen) showErr(message string) {
 	fyne.Do(func() {
 		ls.ConnErr.SetText(message)

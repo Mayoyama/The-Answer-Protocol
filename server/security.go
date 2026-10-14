@@ -35,8 +35,8 @@ func (p *Player) isOnTimeout(timestamp time.Time) (bool, time.Duration) {
 
 // handleTimeoutBucket applies the player's per-input token bucket, timing them out if it's empty.
 func (p *Player) handleTimeoutBucket(timestamp time.Time) bool {
-	const refill = 0.75
-	const maxCapacity = 8
+	const refill = 1.1
+	const maxCapacity = 12
 
 	p.PlayerMu.Lock()
 	defer p.PlayerMu.Unlock()
@@ -58,7 +58,7 @@ func (p *Player) handleTimeoutBucket(timestamp time.Time) bool {
 }
 
 func (p *Player) handleQueryBucket(timestamp time.Time) bool {
-	const queryRefill = 1.2
+	const queryRefill = 0.9
 	const queryMaxCapacity = 10
 
 	p.PlayerMu.Lock()

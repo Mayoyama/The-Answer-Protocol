@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"fyne.io/fyne/v2"
 	"net"
 	"strings"
 	"sync"
@@ -15,33 +16,6 @@ var (
 	BufferFullErr  = errors.New("sending error: command buffer exceeds limits")
 	QuitTimeoutErr = errors.New("no response from server... exiting program anyway")
 )
-
-// gracefulQuit sends QUIT to the server and waits briefly for a response before exiting.
-func (tc *tapConnection) gracefulQuit(timeout time.Duration) error {
-	if err := tc.sendButtonCommandToServer("QUIT"); err != nil {
-		return err
-	}
-
-	deadline := time.After(timeout)
-
-	for {
-		select {
-		case response := <-tc.ServerResponses:
-			if strings.TrimSpace(response) == "OK bye" {
-				return nil
-			}
-
-		case err := <-tc.ServerErrs:
-			return err
-
-		case <-tc.Done:
-			return ConnClosedErr
-
-		case <-deadline:
-			return QuitTimeoutErr
-		}
-	}
-}
 
 // tapConnection groups everything that belongs to one connection to the server.
 type tapConnection struct {
@@ -146,4 +120,63 @@ func (tc *tapConnection) shutdown() {
 		_ = tc.Conn.Close()
 		close(tc.Done)
 	})
+}
+
+func (cr *CommandRouter) handleQuit() {
+	if cr.tc != nil {
+		var quitMsg string
+
+		quitErr := cr.tc.gracefulQuit(time.Second * 3)
+		cr.tc.shutdown()
+
+		if quitErr != nil {
+			quitMsg = quitErr.Error()
+
+		} else {
+			quitMsg = "OK bye"
+		}
+
+		if cr.LoggedIn {
+			cr.Game.displayGameError(quitMsg)
+
+		} else {
+			fyne.Do(func() {
+				cr.Login.ConnErr.SetText(quitMsg)
+
+			})
+		}
+
+		time.Sleep(time.Millisecond * 2800)
+	}
+
+	fyne.Do(func() {
+		cr.Win.Close()
+	})
+}
+
+// gracefulQuit sends QUIT to the server and waits briefly for a response before exiting.
+func (tc *tapConnection) gracefulQuit(timeout time.Duration) error {
+	if err := tc.sendButtonCommandToServer("QUIT"); err != nil {
+		return err
+	}
+
+	deadline := time.After(timeout)
+
+	for {
+		select {
+		case response := <-tc.ServerResponses:
+			if strings.TrimSpace(response) == "OK bye" {
+				return nil
+			}
+
+		case err := <-tc.ServerErrs:
+			return err
+
+		case <-tc.Done:
+			return ConnClosedErr
+
+		case <-deadline:
+			return QuitTimeoutErr
+		}
+	}
 }

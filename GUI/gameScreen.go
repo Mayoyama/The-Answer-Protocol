@@ -2,14 +2,13 @@ package main
 
 import (
 	"fmt"
-	"image/color"
-	"time"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	"image/color"
+	"time"
 )
 
 type GameScreen struct {
@@ -70,9 +69,9 @@ func buildTopSection() (*GSTopSection, *fyne.Container) {
 	gsTop.ZoneNameLabel.TextStyle = fyne.TextStyle{Bold: true}
 	gsTop.ZoneNameLabel.Alignment = fyne.TextAlignCenter
 
-	gsTop.OnlineLabel = canvas.NewText("Online: - ", color.White)
+	gsTop.OnlineLabel = canvas.NewText("🌐 Online: - ", color.White)
 	gsTop.OnlineLabel.Alignment = fyne.TextAlignTrailing
-	gsTop.InRoomLabel = canvas.NewText("Room: - ", color.White)
+	gsTop.InRoomLabel = canvas.NewText("🏠 Room: - ", color.White)
 	gsTop.InRoomLabel.Alignment = fyne.TextAlignTrailing
 	onlineContent := container.NewVBox(layout.NewSpacer(), gsTop.OnlineLabel, gsTop.InRoomLabel, layout.NewSpacer())
 
@@ -93,7 +92,7 @@ func buildGameScreen(tapConnRequests chan<- string) *GameScreen {
 
 	gs.GameScreen = buildNewZoneImage(backdrop_w, backdrop_h)
 
-	gs.OverlayTopSection = buildTopOverlay() //, gs.OverlayTopContent
+	gs.OverlayTopSection = buildTopOverlay(tapConnRequests) //, gs.OverlayTopContent
 
 	gs.OverlayRightSection, gs.OverlayRightContent = buildRightOverlay(tapConnRequests)
 

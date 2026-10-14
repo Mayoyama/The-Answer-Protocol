@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"time"
-
 	"fyne.io/fyne/v2"
+	"strings"
+	"time"
 )
 
 const (
@@ -28,7 +28,12 @@ func (cr *CommandRouter) setBattleMode(on bool) {
 			cr.BattleLogHideTimer.Stop()
 		}
 
+		cr.FightOpen = true
+
 		targetName := IDToLabel(cr.AttackTargetName)
+
+		newTarget := !strings.EqualFold(targetName, cr.LastBattleTargetName)
+		cr.LastBattleTargetName = targetName
 
 		if targetName == "" {
 			targetName = "Enemy NPC"
@@ -39,7 +44,10 @@ func (cr *CommandRouter) setBattleMode(on bool) {
 		oTS := cr.Game.OverlayTopSection
 
 		fyne.Do(func() {
-			oTS.BattleLog.addLine(separator)
+			if newTarget {
+				oTS.BattleLog.addLine(separator)
+			}
+
 			oTS.ZoneLookContent.Hide()
 			oTS.BattleLogContent.Show()
 			oTS.BattleSwapStack.Refresh()
@@ -106,7 +114,7 @@ func (cr *CommandRouter) handleBattle(reply ReplyContent) {
 	})
 
 	if atk.PlayerHP <= 0 || atk.TargetHP <= 0 {
-		cr.setBattleMode(false)
+		cr.endBattleMode()
 	}
 }
 
@@ -149,7 +157,7 @@ func (cr *CommandRouter) buildAttackRoundString(data AttackParse) string {
 		whoFirst = targetName
 	}
 
-	initString := fmt.Sprintf("Battle Round! Initiative: %s rolls %d, %s rolls %d. %s goes first.", cr.PlayerUsername, data.PlayerInitRoll, targetName, data.TargetInitRoll, whoFirst)
+	initString := fmt.Sprintf("Battle Round! Initiative 🎲: %s rolls %d, %s rolls %d. %s goes first.", cr.PlayerUsername, data.PlayerInitRoll, targetName, data.TargetInitRoll, whoFirst)
 
 	if data.PlayerHP <= 0 && data.TargetDmgRecvd == 0 {
 		playerEffect = ""
@@ -196,8 +204,27 @@ func (cr *CommandRouter) buildAttackRoundString(data AttackParse) string {
 func (cr *CommandRouter) logFlee(reply ReplyContent) {
 	if reply.BattleFled {
 		fyne.Do(func() {
-			cr.Game.OverlayTopSection.BattleLog.addLine("You fled the battle.")
-			cr.Game.OverlayBottomSection.LogWindow.addLine("You fled the battle.")
+			cr.Game.OverlayTopSection.BattleLog.addLine("🏃 You fled the battle.")
 		})
 	}
+}
+
+func (cr *CommandRouter) endBattleMode() {
+	if cr.FightOpen {
+		cr.FightOpen = false
+
+		oTS := cr.Game.OverlayTopSection
+
+		fyne.Do(func() {
+			oTS.BattleLog.addLine("**********************************")
+			oTS.ZoneLookContent.Hide()
+			oTS.BattleLogContent.Show()
+			oTS.BattleSwapStack.Refresh()
+			oTS.BattleLog.Scroll.ScrollToBottom()
+		})
+
+		cr.startBattleLogHideTimer()
+	}
+
+	cr.setBattleMode(false)
 }

@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"image"
 	"image/color"
 	"image/png"
 	"strings"
-
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/container"
 )
 
 // Screen holds the widgets of the game screen that other code needs to reach.

@@ -59,6 +59,7 @@ type ReplyContent struct {
 	NPCText     string
 	NPCHeal     bool
 	Err         ErrParse
+	Other       string
 }
 
 type LookParse struct {
@@ -387,6 +388,6 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 		return ReplyContent{Type: ReplyError, Err: errInfo}, nil
 
 	default:
-		return ReplyContent{Type: ReplyIgnore}, nil
+		return ReplyContent{Type: ReplyOther, Other: toParse}, nil
 	}
 }

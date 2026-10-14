@@ -2,14 +2,13 @@ package main
 
 import (
 	"fmt"
-	"image/color"
-	"strings"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	"image/color"
+	"strings"
 )
 
 type OverlayTopSection struct {
@@ -34,14 +33,15 @@ type OverlayRightSection struct {
 }
 
 type OverlayBottomSection struct {
-	ChatWindow *ChatWindow
-	LogWindow  *ChatWindow
-	TextEntry  *widget.Entry
+	ChatWindow          *ChatWindow
+	LogWindow           *ChatWindow
+	TextEntry           *widget.Entry
+	QueryButtonsContent *fyne.Container
 }
 
 const WindowRectAlpha uint8 = 135
 
-func buildTopOverlay() *OverlayTopSection {
+func buildTopOverlay(tapConnRequests chan<- string) *OverlayTopSection {
 	const (
 		battleLogWidth  float32 = 760
 		battleLogHeight float32 = 250
@@ -117,13 +117,18 @@ func buildTopOverlay() *OverlayTopSection {
 
 	oTS.BattleSwapStack = container.NewStack(oTS.ZoneLookContent, oTS.BattleLogContent)
 
-	oTS.RoomDetailsButton = widget.NewButton("Room Details", func() {
+	oTS.RoomDetailsButton = widget.NewButton("LOOK", func() {
 		if oTS.ZoneLookContent.Visible() {
 			oTS.ZoneLookContent.Hide()
 
 		} else {
 			oTS.BattleLogContent.Hide()
 			oTS.ZoneLookContent.Show()
+
+			select {
+			case tapConnRequests <- "LOOK":
+			default:
+			}
 		}
 
 		oTS.BattleSwapStack.Refresh()
@@ -165,6 +170,16 @@ func buildRightOverlay(tapConnRequests chan<- string) (*OverlayRightSection, *fy
 
 func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *fyne.Container) {
 	oBS := &OverlayBottomSection{}
+
+	keyItemButton := widget.NewButton("Key Item", func() {
+		select {
+		case tapConnRequests <- "KEYITEMS":
+		default:
+		}
+	})
+
+	oBS.QueryButtonsContent = container.NewVBox(keyItemButton)
+
 	oBS.ChatWindow = buildChatWindow(350, 250)
 	oBS.LogWindow = buildChatWindow(350, 250)
 
@@ -186,7 +201,7 @@ func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *
 			if len(cmdParts) > 2 && cmdUpper == "CHAT" {
 				scope := Capitalize(cmdParts[1])
 				if scope == "Room" || scope == "Global" || scope == "Group" {
-					toChatWin := fmt.Sprintf("%s (YOU) << %s", scope, cmdParts[2])
+					toChatWin := fmt.Sprintf("💬 %s (YOU) << %s", scope, cmdParts[2])
 					oBS.ChatWindow.addLine(toChatWin)
 				}
 
@@ -210,5 +225,7 @@ func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *
 
 	content := container.NewVBox(chatWindows, textBox)
 
-	return oBS, content
+	withButtons := container.NewHBox(content, oBS.QueryButtonsContent)
+
+	return oBS, withButtons
 }
