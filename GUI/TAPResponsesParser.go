@@ -11,6 +11,7 @@ type ReplyType int
 
 const (
 	ReplyIgnore ReplyType = iota
+	ReplyEmptyList
 	ReplyLook
 	ReplyPresence
 	ReplyWho
@@ -184,8 +185,11 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 	)
 
 	switch {
-	case toParse == "OK []", toParse == "OK [ ]", toParse == "OK":
+	case toParse == "OK":
 		return ReplyContent{Type: ReplyIgnore}, nil
+
+	case toParse != "OK [" && strings.TrimSpace(strings.TrimSuffix(toParse, "]")) == "OK [":
+		return ReplyContent{Type: ReplyEmptyList}, nil
 
 	case strings.HasPrefix(toParse, "OK room="):
 		roomID := strings.TrimPrefix(toParse, "OK room=")

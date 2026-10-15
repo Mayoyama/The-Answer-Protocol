@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -47,9 +48,24 @@ func IDToLabel(id string) string {
 	name = strings.TrimPrefix(name, "item.")
 	name = strings.TrimPrefix(name, "key_item.")
 	name = strings.TrimPrefix(name, "npc.")
+	name = strings.TrimPrefix(name, "quest.")
 	name = strings.TrimPrefix(name, "zone.")
 	name = strings.TrimPrefix(name, "room.")
 	name = strings.TrimPrefix(name, "loc.")
 
 	return SplitSnakeCase(name)
+}
+
+func buildQuestLine(q QuestsParse) string {
+	qLine := fmt.Sprintf("%s (%s)", IDToLabel(q.QuestID), Capitalize(q.Status))
+
+	if q.Progress != "" {
+		qLine += fmt.Sprintf(" - Steps: %s", q.Progress)
+	}
+
+	if q.QuestItems != "" {
+		qLine += fmt.Sprintf((" - Items: %s"), q.QuestItems)
+	}
+
+	return qLine
 }

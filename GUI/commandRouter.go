@@ -22,11 +22,13 @@ type CommandRouter struct {
 	GotGreeting     bool
 	LoggedIn        bool
 	PendingName     string
-	PlayerUsername  string
-	TalkTargetName  string
-	CurrentZone     string
-	InZoneCount     int
-	PollTicker      *time.Ticker
+
+	PlayerUsername       string
+	TalkTargetName       string
+	CurrentZone          string
+	InZoneCount          int
+	PollTicker           *time.Ticker
+	QueryWaitingForReply string
 
 	AttackTargetName     string
 	LastBattleTargetName string
@@ -152,6 +154,9 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 		case ReplyChat:
 			cr.handleChat(reply)
 
+		case ReplyEmptyList:
+			cr.resolveEmptyList()
+
 		case ReplyError:
 			cr.handleReplyError(reply)
 
@@ -164,7 +169,7 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 		case ReplyGroup:
 
 		case ReplyInventory:
-			//🎒
+			cr.handleInventory(reply)
 
 		case ReplyKeyitems:
 			cr.handleKeyItems(reply)
@@ -182,6 +187,7 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 			cr.handleQuest(reply)
 
 		case ReplyQuests:
+			cr.handleQuests(reply)
 
 		case ReplyRespawned:
 			cr.handleRespawn(reply)
@@ -222,7 +228,13 @@ func (cr *CommandRouter) handleTapConnRequest(cmd string) {
 		return
 	}
 
-	if strings.ToUpper(cmd) == "QUIT" {
+	upperCmd := strings.ToUpper(cmd)
+
+	switch upperCmd {
+	case "KEYITEMS", "INVENTORY", "QUESTS":
+		cr.QueryWaitingForReply = upperCmd
+
+	case "QUIT":
 		cr.Quitting = true
 	}
 
@@ -260,6 +272,7 @@ func (cr *CommandRouter) resetServerState() {
 	cr.AttackTargetName = ""
 	cr.LastBattleTargetName = ""
 	cr.TalkTargetName = ""
+	cr.QueryWaitingForReply = ""
 
 	oTS := cr.Game.OverlayTopSection
 	oBS := cr.Game.OverlayBottomSection

@@ -43,7 +43,7 @@ type RoomStatsWidget struct {
 	PlayersList *widget.Label
 	NPCsList    *widget.Label
 	ExitsList   *widget.Label
-	ItemsList   *widget.Label
+	ItemsList   *ItemList
 	RoomDesc    *widget.Label
 }
 

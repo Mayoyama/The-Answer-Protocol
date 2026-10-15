@@ -29,13 +29,18 @@ type OverlayTopSection struct {
 }
 
 type OverlayRightSection struct {
-	DPad *DPad
+	DPad          *DPad
+	InventoryList *ItemList
 }
 
 type OverlayBottomSection struct {
 	ChatWindow          *ChatWindow
 	LogWindow           *ChatWindow
 	TextEntry           *widget.Entry
+	KeyItemButton       *widget.Button
+	InventoryButton     *widget.Button
+	QuestsButton        *widget.Button
+	WhoButton           *widget.Button
 	QueryButtonsContent *fyne.Container
 }
 
@@ -89,13 +94,10 @@ func buildTopOverlay(tapConnRequests chan<- string) *OverlayTopSection {
 
 	itemsTitle := widget.NewLabel("ITEMS")
 	itemsTitle.Alignment = fyne.TextAlignCenter
-	oTS.RoomStatsInfo.ItemsList = widget.NewLabel("")
-	oTS.RoomStatsInfo.ItemsList.Alignment = fyne.TextAlignCenter
-	oTS.RoomStatsInfo.ItemsList.Wrapping = fyne.TextWrapBreak
-	itemsRowHeight := oTS.RoomStatsInfo.ItemsList.MinSize().Height
-	itemsScroll := container.NewVScroll(oTS.RoomStatsInfo.ItemsList)
-	itemsScroll.SetMinSize(fyne.NewSize(190, itemsRowHeight*4))
-	itemsColumn := container.NewBorder(itemsTitle, nil, nil, nil, itemsScroll)
+	oTS.RoomStatsInfo.ItemsList = buildItemList("TAKE", tapConnRequests)
+	itemsRowHeight := widget.NewLabel("").MinSize().Height
+	itemsBox := container.NewGridWrap(fyne.NewSize(190, itemsRowHeight*4), oTS.RoomStatsInfo.ItemsList.List)
+	itemsColumn := container.NewBorder(itemsTitle, nil, nil, nil, itemsBox)
 
 	oTS.RoomStatsInfo.RoomDesc = widget.NewLabel("")
 	oTS.RoomStatsInfo.RoomDesc.Alignment = fyne.TextAlignCenter
@@ -163,7 +165,14 @@ func buildRightOverlay(tapConnRequests chan<- string) (*OverlayRightSection, *fy
 		widget.NewLabel(""), oRS.DPad.DirButtonSet["south"], oRS.DPad.DirButtonSet["down"],
 	)
 
-	rightSideContent := container.NewHBox(layout.NewSpacer(), container.NewVBox(dPad, layout.NewSpacer()))
+	oRS.InventoryList = buildItemList("DROP", tapConnRequests)
+
+	InvTitle := widget.NewLabel("INVENTORY")
+	InvTitle.Alignment = fyne.TextAlignCenter
+	invRowHeight := widget.NewLabel("").MinSize().Height
+	invContent := container.NewGridWrap(fyne.NewSize(190, invRowHeight*4), oRS.InventoryList.List)
+
+	rightSideContent := container.NewHBox(layout.NewSpacer(), container.NewVBox(dPad, InvTitle, invContent, layout.NewSpacer()))
 
 	return oRS, rightSideContent
 }
@@ -171,14 +180,14 @@ func buildRightOverlay(tapConnRequests chan<- string) (*OverlayRightSection, *fy
 func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *fyne.Container) {
 	oBS := &OverlayBottomSection{}
 
-	keyItemButton := widget.NewButton("Key Item", func() {
-		select {
-		case tapConnRequests <- "KEYITEMS":
-		default:
-		}
-	})
+	oBS.KeyItemButton = createStatusButton("Key Items", "KEYITEMS", tapConnRequests)
+	oBS.InventoryButton = createStatusButton("Inventory", "INVENTORY", tapConnRequests)
+	oBS.QuestsButton = createStatusButton("Quests", "QUESTS", tapConnRequests)
+	oBS.WhoButton = createStatusButton("Who", "WHO", tapConnRequests)
 
-	oBS.QueryButtonsContent = container.NewVBox(keyItemButton)
+	queryButtonsLeft := container.NewVBox(layout.NewSpacer(), oBS.InventoryButton, oBS.KeyItemButton)
+	queryButtonsRight := container.NewVBox(layout.NewSpacer(), oBS.WhoButton, oBS.QuestsButton)
+	oBS.QueryButtonsContent = container.NewHBox(queryButtonsLeft, queryButtonsRight)
 
 	oBS.ChatWindow = buildChatWindow(350, 250)
 	oBS.LogWindow = buildChatWindow(350, 250)

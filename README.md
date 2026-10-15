@@ -61,8 +61,8 @@ Requirements: Go, Rust/Cargo for the Rust CLI, and a C compiler for the GUI clie
 
 Implemented in `security.go`, covering the resource limits recommended in RFC §9.4 (message length, connection count, message frequency):
 
-- **Command throttle:** a per-player token bucket (refill 0.75/s, capacity 8). An empty bucket starts a 1-minute timeout (`ERR 750`). Each input during the timeout is a violation; the 10th becomes a 20-minute IP ban (`ERR 760`).
-- **Query bucket:** `LOOK`, `WHO`, `STATUS` and `GOLD` use a separate bucket (refill 1.2/s, capacity 10), so polling doesn't drain the main one. An empty bucket answers `ERR 747` with no penalty; about 20 rejections within 10 seconds start the 1-minute timeout. During a timeout, a bare `QUIT` and queries with tokens left are still answered.
+- **Command throttle:** a per-player token bucket (refill 1.1/s, capacity 12). An empty bucket starts a 1-minute timeout (`ERR 750`). Each input during the timeout is a violation; the 10th becomes a 20-minute IP ban (`ERR 760`).
+- **Query bucket:** `LOOK`, `WHO`, `STATUS` and `GOLD` use a separate bucket (refill 0.9/s, capacity 10), so polling doesn't drain the main one. An empty bucket answers `ERR 747` with no penalty; about 20 rejections within 10 seconds start the 1-minute timeout. During a timeout, a bare `QUIT` and queries with tokens left are still answered.
 - **Connection flooding:** 5 connections from one host within 5 seconds give a 20–30 minute ban (`trackConnCount`). Bans are keyed on the bare host (port stripped), so reconnecting on a new port doesn't dodge them.
 - **Line length:** lines over 1024 bytes get `ERR 675 MESSAGE_TOO_LONG` without using tokens; the 5th within 5 minutes closes the connection. A line over 64 KB closes it at once.
 
@@ -125,13 +125,16 @@ The GUI client (`GUI/`, Go with Fyne v2.8.1) is in progress. Its design (layout,
   - a pixel-art background image for each room
   - a top row with an HP bar, the room name, and counters for players online and players in the room
   - the player's status and gold
-  - a room details panel (description, players, NPCs, exits, items) that updates live and can be hidden with a button
-  - a battle log that takes the room details panel's place during a fight, one entry per round
+  - a LOOK button with a room details panel (description, players, NPCs, exits, items); LOOK is also polled every 3.5 seconds, so the panel stays current
+  - items in the room are taken by clicking them; the inventory list drops an item when clicked and updates right after each take or drop
+  - a battle log that opens during a fight (one entry per round, a divider per fight) and hides 5 seconds after it ends; a Battle Log button shows it again
   - direction buttons for moving, disabled during a rate-limit timeout (`ERR 750`)
-  - separate chat and log windows; the chat window also shows NPC dialogue, in either TALK reply format
+  - INVENTORY, KEYITEMS, WHO and QUESTS buttons, with results in the log
+  - separate chat and log windows; the chat window also shows NPC dialogue (in either TALK reply format) and fight announcements, and each line starts with an emoji showing its kind
   - a text field for typing raw protocol commands
 
-  The other elements in the design record are not built yet.
+  Not built yet: the RPG menu (Talk, Attack, Quest, Group, Chat), the STATUS and Quit buttons, the Flee entry and Show/Hide UI.
+- **Known limitation:** replies don't name the command they answer, and an empty list (`OK []`) looks the same for INVENTORY, KEYITEMS and QUESTS. The GUI matches it to the last of these three that was sent, so if two different ones are sent before the first reply arrives, the "None" line can name the wrong command.
 
 [↑ Back to top](#top)
 
@@ -464,7 +467,7 @@ Go to the Fallow Field (from the Taverne: east, south, east, east) and `ATTACK b
 
 ### GUI
 
-`make run-client-gui` with the server running. A name that is empty or one character long is refused without contacting the server; a name in use shows `ERR 201`; stopping the server brings back the login screen. Compare the game screen with [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
+`make run-client-gui` with the server running. A name that is empty or one character long is refused without contacting the server; a name in use shows `ERR 201`; stopping the server brings back the login screen. In game, click an item in the room details to take it and in the inventory to drop it; a second client sees the change within 3.5 seconds. `ATTACK cave bat` in the Cistern opens the battle log. Compare the game screen with [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
 
 ### World validation
 
@@ -491,7 +494,7 @@ AI (Claude) was used during development for:
 - Simulating fights to balance enemy stats
 - Reviewing code: the login path, rate limiting, `EXAMINE`, `KEYITEMS`, `quest_items`, and checking `world.yaml` for broken references
 - Checking the server's replies and events against the RFC and the subject PDF
-- GUI client: explaining Fyne's API and Go concurrency patterns, and reviewing the connection layer, parser, game screen and battle log
+- GUI client: explaining Fyne's API and Go concurrency patterns, and reviewing the connection layer, parser, game screen, battle log and item lists
 - Drafting and formatting this README and the GUI design record, and checking them against the subject and the code
 
 [↑ Back to top](#top)

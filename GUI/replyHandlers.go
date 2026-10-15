@@ -8,6 +8,34 @@ import (
 	"time"
 )
 
+func (cr *CommandRouter) resolveEmptyList() {
+	var emptyLine string
+
+	switch cr.QueryWaitingForReply {
+	case "KEYITEMS":
+		emptyLine = "🔑 Key Items: None"
+	case "INVENTORY":
+		emptyLine = "🎒 Inventory: Empty"
+
+		inventory := cr.Game.OverlayRightSection.InventoryList
+		fyne.Do(func() {
+			inventory.ItemIDs = nil
+			inventory.List.Refresh()
+		})
+
+	case "QUESTS":
+		emptyLine = "📜 Quests: None"
+	default:
+		return
+	}
+
+	cr.QueryWaitingForReply = ""
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(emptyLine)
+	})
+}
+
 func (cr *CommandRouter) handleChat(reply ReplyContent) {
 	var (
 		sender      string
@@ -22,7 +50,7 @@ func (cr *CommandRouter) handleChat(reply ReplyContent) {
 		sender = fmt.Sprintf("NPC (%s)", IDToLabel(nameOnly))
 
 	} else {
-		sender = fmt.Sprintf("(%s)", IDToLabel(reply.Chat.Sender))
+		sender = fmt.Sprintf("(%s)", reply.Chat.Sender)
 
 	}
 
@@ -63,6 +91,43 @@ func (cr *CommandRouter) handleGold(reply ReplyContent) {
 	})
 }
 
+func (cr *CommandRouter) handleInventory(reply ReplyContent) {
+	var (
+		items    []string
+		itemList string
+		waiting  bool
+	)
+
+	if strings.EqualFold(cr.QueryWaitingForReply, "inventory") {
+		cr.QueryWaitingForReply = ""
+		waiting = true
+	}
+
+	for _, item := range reply.Inventory {
+		items = append(items, IDToLabel(item))
+	}
+
+	if len(items) > 0 {
+		itemList = strings.Join(items, ", ")
+
+	} else {
+		itemList = "None"
+	}
+
+	itemsLine := fmt.Sprintf("🎒 Items: %s", itemList)
+	inventory := cr.Game.OverlayRightSection.InventoryList
+	inventoryIDs := reply.Inventory
+
+	fyne.Do(func() {
+		if waiting {
+			cr.Game.OverlayBottomSection.LogWindow.addLine(itemsLine)
+		}
+
+		inventory.ItemIDs = inventoryIDs
+		inventory.List.Refresh()
+	})
+}
+
 func (cr *CommandRouter) handleKeyItems(reply ReplyContent) {
 	var keyItems []string
 
@@ -85,9 +150,8 @@ func (cr *CommandRouter) handleKeyItems(reply ReplyContent) {
 
 func (cr *CommandRouter) handleLook(reply ReplyContent) {
 	var (
-		roomExits  []string
-		npcLabels  []string
-		itemLabels []string
+		roomExits []string
+		npcLabels []string
 	)
 
 	for k, v := range reply.Look.Room.Exits {
@@ -95,9 +159,7 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 		roomExits = append(roomExits, exit)
 	}
 
-	slices.Sort(roomExits)
-
-	inRoomString := fmt.Sprintf("Room: %d", len(reply.Look.Players))
+	inRoomString := fmt.Sprintf("🏠 Room: %d", len(reply.Look.Players))
 
 	cr.InZoneCount = len(reply.Look.Players)
 
@@ -105,9 +167,12 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 		npcLabels = append(npcLabels, IDToLabel(id))
 	}
 
-	for _, id := range reply.Look.Items {
-		itemLabels = append(itemLabels, IDToLabel(id))
-	}
+	slices.Sort(reply.Look.Players)
+	slices.Sort(npcLabels)
+	slices.Sort(roomExits)
+	slices.Sort(reply.Look.Items)
+
+	oTS := cr.Game.OverlayTopSection
 
 	fyne.Do(func() {
 		cr.Game.TopSection.ZoneNameLabel.Text = reply.Look.Room.Name
@@ -116,11 +181,14 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 		cr.Game.TopSection.InRoomLabel.Text = inRoomString
 		cr.Game.TopSection.InRoomLabel.Refresh()
 
-		cr.Game.OverlayTopSection.RoomStatsInfo.RoomDesc.SetText(reply.Look.Room.Description)
-		cr.Game.OverlayTopSection.RoomStatsInfo.PlayersList.SetText(strings.Join(reply.Look.Players, "\n"))
-		cr.Game.OverlayTopSection.RoomStatsInfo.NPCsList.SetText(strings.Join(npcLabels, "\n"))
-		cr.Game.OverlayTopSection.RoomStatsInfo.ExitsList.SetText(strings.Join(roomExits, "\n"))
-		cr.Game.OverlayTopSection.RoomStatsInfo.ItemsList.SetText(strings.Join(itemLabels, "\n"))
+		oTS.RoomStatsInfo.RoomDesc.SetText(reply.Look.Room.Description)
+		oTS.RoomStatsInfo.PlayersList.SetText(strings.Join(reply.Look.Players, "\n"))
+		oTS.RoomStatsInfo.NPCsList.SetText(strings.Join(npcLabels, "\n"))
+		oTS.RoomStatsInfo.ExitsList.SetText(strings.Join(roomExits, "\n"))
+
+		oTS.RoomStatsInfo.ItemsList.ItemIDs = reply.Look.Items
+		oTS.RoomStatsInfo.ItemsList.List.Refresh()
+		oTS.RoomStatsInfo.ItemsList.List.ScrollToBottom()
 	})
 
 	if reply.Look.Room.ID != cr.CurrentZone {
@@ -176,11 +244,11 @@ func (cr *CommandRouter) handlePresence(reply ReplyContent) {
 	var actionLine string
 
 	if strings.EqualFold(reply.Presence.Direction, "enter") {
-		actionLine = fmt.Sprintf("%s enters the room.", reply.Presence.Who)
+		actionLine = fmt.Sprintf("🚪⬅️ %s enters the room.", reply.Presence.Who)
 		cr.InZoneCount++
 
 	} else {
-		actionLine = fmt.Sprintf("%s leaves the room.", reply.Presence.Who)
+		actionLine = fmt.Sprintf("🚪➡️ %s leaves the room.", reply.Presence.Who)
 		cr.InZoneCount--
 	}
 
@@ -210,10 +278,24 @@ func (cr *CommandRouter) handleQuest(reply ReplyContent) {
 		rewards += "None"
 	}
 
-	questLine := fmt.Sprintf("Quest Accepted!\nTask: %s\n%s", reply.Quest.Description, rewards)
+	questLine := fmt.Sprintf("📜 Quest Accepted!\nTask: %s\n%s", reply.Quest.Description, rewards)
 
 	fyne.Do(func() {
 		cr.Game.OverlayBottomSection.LogWindow.addLine(questLine)
+	})
+}
+
+func (cr *CommandRouter) handleQuests(reply ReplyContent) {
+	var questList []string
+
+	for _, q := range reply.Quests {
+		questList = append(questList, buildQuestLine(q))
+	}
+
+	questsLine := "📜 Quests: \n" + strings.Join(questList, "\n")
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(questsLine)
 	})
 }
 
@@ -314,15 +396,38 @@ func (cr *CommandRouter) handleTakeDrop(reply ReplyContent) {
 	var actionLine string
 
 	if strings.EqualFold(reply.TakeDrop.Action, "taken") {
-		actionLine = "You pick up a " + IDToLabel(reply.TakeDrop.Item)
+		actionLine = "📥 You pick up a " + IDToLabel(reply.TakeDrop.Item)
 
 	} else {
-		actionLine = "You drop the " + IDToLabel(reply.TakeDrop.Item)
+		actionLine = "📤 You drop the " + IDToLabel(reply.TakeDrop.Item)
 	}
+
+	inventory := cr.Game.OverlayRightSection.InventoryList
 
 	fyne.Do(func() {
 		cr.Game.OverlayBottomSection.LogWindow.addLine(actionLine)
+
+		if strings.EqualFold(reply.TakeDrop.Action, "taken") {
+			inventory.ItemIDs = append(inventory.ItemIDs, reply.TakeDrop.Item)
+
+		} else {
+			var remaining []string
+
+			for _, id := range inventory.ItemIDs {
+				if id != reply.TakeDrop.Item {
+					remaining = append(remaining, id)
+				}
+			}
+
+			inventory.ItemIDs = remaining
+		}
+
+		inventory.List.Refresh()
 	})
+
+	if err := cr.tc.sendButtonCommandToServer("LOOK"); err != nil {
+		cr.Game.displayGameError(err.Error())
+	}
 }
 
 func (cr *CommandRouter) handleWho(reply ReplyContent) {
