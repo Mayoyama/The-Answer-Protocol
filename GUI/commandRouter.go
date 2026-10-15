@@ -192,6 +192,9 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 		case ReplyRespawned:
 			cr.handleRespawn(reply)
 			cr.endBattleMode()
+			
+		case ReplyReward:
+			cr.handleRewards(reply)
 
 		case ReplyRoomMove:
 			cr.handleMove(reply)

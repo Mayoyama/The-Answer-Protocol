@@ -43,7 +43,7 @@ type RoomStatsWidget struct {
 	PlayersList *widget.Label
 	NPCsList    *widget.Label
 	ExitsList   *widget.Label
-	ItemsList   *ItemList
+	ItemsList   *widget.Label
 	RoomDesc    *widget.Label
 }
 
@@ -104,16 +104,11 @@ func buildGameScreen(tapConnRequests chan<- string) *GameScreen {
 
 	roomInfoButtonBox := container.NewVBox(roomInfoCentered, container.NewCenter(gs.OverlayTopSection.BattleSwapStack))
 
-	overlaytopRow := container.NewBorder(
-		nil, nil,
-		gs.OverlayTopSection.StatsGoldContent,
-		gs.OverlayRightContent,
-		roomInfoButtonBox,
-	)
+	overlayContent := container.NewBorder(roomInfoButtonBox, gs.OverlayBottomContent, gameErrorContent, nil)
+	
+	statsGoldLayer := container.NewVBox(container.NewHBox(gs.OverlayTopSection.StatsGoldContent))
 
-	overlayContent := container.NewBorder(overlaytopRow, gs.OverlayBottomContent, gameErrorContent, nil)
-
-	overlayStack := container.NewStack(gs.GameScreen.zoneStack, overlayContent)
+	overlayStack := container.NewStack(gs.GameScreen.zoneStack, overlayContent, statsGoldLayer, gs.OverlayRightContent)
 
 	gs.GameContent = container.NewVBox(gs.TopRowContent, overlayStack)
 

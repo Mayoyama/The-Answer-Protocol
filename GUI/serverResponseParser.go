@@ -19,6 +19,7 @@ const (
 	ReplyStatus
 	ReplyQuest
 	ReplyQuests
+	ReplyReward
 	ReplyTakeDrop
 	ReplyInventory
 	ReplyKeyitems
@@ -45,6 +46,8 @@ type ReplyContent struct {
 	ServerCount int
 	Quest       SingleQuestParse
 	Quests      []QuestsParse
+	Rewards RewardParse
+	RewardReceiver string
 	Inventory   InventoryParse
 	KeyItems    KeyItemParse
 	TakeDrop    TakeDropItemParse
@@ -183,6 +186,10 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 		examine   ExamineParse
 		attack    AttackParse
 	)
+	
+	if receiver, amount, ok := isGoldReward(toParse); ok {
+		return ReplyContent{Type: ReplyReward, Rewards: RewardParse{Gold: amount}, RewardReceiver: receiver}, nil
+	}
 
 	switch {
 	case toParse == "OK":
@@ -394,4 +401,45 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 	default:
 		return ReplyContent{Type: ReplyOther, Other: toParse}, nil
 	}
+}
+
+func isGoldReward(line string) (string, int, bool) {
+	parts := strings.Fields(line)
+	
+	if len(parts) != 4 {
+		return "", 0, false
+	}
+	
+	if parts[1] != "receives" || parts[3] != "gold." {
+		return "", 0, false
+	}
+	
+	amount, err := strconv.Atoi(parts[2])
+	
+	if err != nil {
+		return "", 0, false
+	}
+	
+	return parts[0], amount, true 
+}
+
+func isKeyItemReward(line string) (string, string, bool) {
+	noDot := strings.TrimSuffix(line, ".")
+	parts := strings.Fields(noDot)
+	
+	if len(parts) < 3 {
+		return "", "", false
+	}
+	
+	if parts[1] != "receives" {
+		return "", "", false
+	}
+	
+	if !strings.HasSuffix(line, ".") {
+		return "", "", false	
+	}
+	
+	rewardItem := strings.Join(parts[3:], " ")
+	
+	return parts[0], rewardItem, true
 }

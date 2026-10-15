@@ -86,7 +86,7 @@ func (cr *CommandRouter) handleGold(reply ReplyContent) {
 	goldString := fmt.Sprintf("Gold: %d", reply.Gold)
 
 	fyne.Do(func() {
-		cr.Game.OverlayTopSection.GoldLabel.SetText(goldString)
+		cr.Game.OverlayTopSection.GoldLabel.Text = goldString
 		// cr.Game.OverlayBottomSection.LogWindow.addLine("💰 " + goldString)
 	})
 }
@@ -152,6 +152,7 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 	var (
 		roomExits []string
 		npcLabels []string
+		itemLabels []string
 	)
 
 	for k, v := range reply.Look.Room.Exits {
@@ -166,11 +167,16 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 	for _, id := range reply.Look.NPCs {
 		npcLabels = append(npcLabels, IDToLabel(id))
 	}
+	
+	slices.Sort(reply.Look.Items)
+	
+	for _, item := range reply.Look.Items {
+		itemLabels = append(itemLabels, IDToLabel(item))
+	}
 
 	slices.Sort(reply.Look.Players)
 	slices.Sort(npcLabels)
 	slices.Sort(roomExits)
-	slices.Sort(reply.Look.Items)
 
 	oTS := cr.Game.OverlayTopSection
 
@@ -185,10 +191,11 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 		oTS.RoomStatsInfo.PlayersList.SetText(strings.Join(reply.Look.Players, "\n"))
 		oTS.RoomStatsInfo.NPCsList.SetText(strings.Join(npcLabels, "\n"))
 		oTS.RoomStatsInfo.ExitsList.SetText(strings.Join(roomExits, "\n"))
+		oTS.RoomStatsInfo.ItemsList.SetText(strings.Join(itemLabels, "\n"))
 
-		oTS.RoomStatsInfo.ItemsList.ItemIDs = reply.Look.Items
-		oTS.RoomStatsInfo.ItemsList.List.Refresh()
-		oTS.RoomStatsInfo.ItemsList.List.ScrollToBottom()
+		cr.Game.OverlayRightSection.TakeList.ItemIDs = reply.Look.Items
+		cr.Game.OverlayRightSection.TakeList.List.Refresh()
+		cr.Game.OverlayRightSection.TakeList.List.ScrollToBottom()
 	})
 
 	if reply.Look.Room.ID != cr.CurrentZone {
@@ -367,6 +374,16 @@ func (cr *CommandRouter) handleRespawn(reply ReplyContent) {
 	})
 }
 
+func (cr *CommandRouter) handleRewards(reply ReplyContent) {
+	if reply.Rewards.Gold > 0 {
+		goldLine := fmt.Sprintf("🎁 %s receives %d gold.", reply.RewardReceiver, reply.Rewards.Gold)
+	}
+	
+	if reply.Rewards.KeyItem != "" {
+		kiLine := fmt.Sprintf("🎁 %s receives %s.", reply.RewardReceiver, reply.Rewards.KeyItem)
+	}
+}
+
 func (cr *CommandRouter) handleServerCount(reply ReplyContent) {
 	onlineCount := fmt.Sprintf("🌐 Online: %d ", reply.ServerCount)
 
@@ -388,7 +405,7 @@ func (cr *CommandRouter) handleStatus(reply ReplyContent) {
 	fyne.Do(func() {
 		cr.Game.TopSection.HPBar.Max = float64(maxHP)
 		cr.Game.TopSection.HPBar.SetValue(float64(hp))
-		cr.Game.OverlayTopSection.PlayerStatusLabel.SetText(status)
+		cr.Game.OverlayTopSection.PlayerStatusLabel.Text = status
 	})
 }
 

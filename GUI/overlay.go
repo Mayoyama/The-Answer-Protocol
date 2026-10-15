@@ -14,8 +14,8 @@ import (
 type OverlayTopSection struct {
 	RoomDetailsButton *widget.Button
 	BattleLogButton   *widget.Button
-	GoldLabel         *widget.Label
-	PlayerStatusLabel *widget.Label
+	GoldLabel         *canvas.Text
+	PlayerStatusLabel *canvas.Text
 	StatsGoldContent  *fyne.Container
 
 	RoomStatsInfo   *RoomStatsWidget
@@ -31,6 +31,7 @@ type OverlayTopSection struct {
 type OverlayRightSection struct {
 	DPad          *DPad
 	InventoryList *ItemList
+	TakeList *ItemList
 }
 
 type OverlayBottomSection struct {
@@ -54,11 +55,13 @@ func buildTopOverlay(tapConnRequests chan<- string) *OverlayTopSection {
 
 	oTS := &OverlayTopSection{}
 
-	oTS.PlayerStatusLabel = widget.NewLabel("Status: -")
+	oTS.PlayerStatusLabel = canvas.NewText("Status: -", color.White)
 	oTS.PlayerStatusLabel.Alignment = fyne.TextAlignLeading
-	oTS.GoldLabel = widget.NewLabel("Gold: -")
+	oTS.GoldLabel = canvas.NewText("Gold: -", color.White)
 	oTS.GoldLabel.Alignment = fyne.TextAlignLeading
-	oTS.StatsGoldContent = container.NewVBox(oTS.PlayerStatusLabel, oTS.GoldLabel)
+	statsGoldBox := container.NewVBox(oTS.PlayerStatusLabel, oTS.GoldLabel)
+	statsGoldWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})
+	oTS.StatsGoldContent = container.NewStack(statsGoldWinBacking, statsGoldBox)
 
 	oTS.RoomStatsInfo = &RoomStatsWidget{}
 
@@ -94,10 +97,14 @@ func buildTopOverlay(tapConnRequests chan<- string) *OverlayTopSection {
 
 	itemsTitle := widget.NewLabel("ITEMS")
 	itemsTitle.Alignment = fyne.TextAlignCenter
-	oTS.RoomStatsInfo.ItemsList = buildItemList("TAKE", tapConnRequests)
-	itemsRowHeight := widget.NewLabel("").MinSize().Height
-	itemsBox := container.NewGridWrap(fyne.NewSize(190, itemsRowHeight*4), oTS.RoomStatsInfo.ItemsList.List)
-	itemsColumn := container.NewBorder(itemsTitle, nil, nil, nil, itemsBox)
+	oTS.RoomStatsInfo.ItemsList = widget.NewLabel("")
+	oTS.RoomStatsInfo.ItemsList.Alignment = fyne.TextAlignCenter
+	oTS.RoomStatsInfo.ItemsList.Wrapping = fyne.TextWrapBreak
+	itemsRowHeight := oTS.RoomStatsInfo.ItemsList.MinSize().Height
+	itemsScroll := container.NewVScroll(oTS.RoomStatsInfo.ItemsList)
+	itemsScroll.SetMinSize(fyne.NewSize(190, itemsRowHeight*4))
+	itemsColumn := container.NewBorder(itemsTitle, nil, nil, nil, itemsScroll)
+
 
 	oTS.RoomStatsInfo.RoomDesc = widget.NewLabel("")
 	oTS.RoomStatsInfo.RoomDesc.Alignment = fyne.TextAlignCenter
@@ -165,14 +172,29 @@ func buildRightOverlay(tapConnRequests chan<- string) (*OverlayRightSection, *fy
 		widget.NewLabel(""), oRS.DPad.DirButtonSet["south"], oRS.DPad.DirButtonSet["down"],
 	)
 
-	oRS.InventoryList = buildItemList("DROP", tapConnRequests)
-
-	InvTitle := widget.NewLabel("INVENTORY")
+	dPadRow := container.NewHBox(layout.NewSpacer(), dPad)
+	
+	InvTitle := widget.NewLabel("INVENTORY/DROP")
 	InvTitle.Alignment = fyne.TextAlignCenter
+	oRS.InventoryList = buildItemList("DROP", tapConnRequests)
 	invRowHeight := widget.NewLabel("").MinSize().Height
 	invContent := container.NewGridWrap(fyne.NewSize(190, invRowHeight*4), oRS.InventoryList.List)
+	invBox := container.NewBorder(InvTitle, nil, nil, nil, invContent)
+	
+	takeItemsTitle := widget.NewLabel("TAKE")
+	takeItemsTitle.Alignment = fyne.TextAlignCenter
+	oRS.TakeList = buildItemList("TAKE", tapConnRequests)
+	takeItemsRowHeight := widget.NewLabel("").MinSize().Height
+	takeItemsContent := container.NewGridWrap(fyne.NewSize(190, takeItemsRowHeight*4), oRS.TakeList.List)
+	takeItemsBox := container.NewBorder(takeItemsTitle, nil, nil, nil, takeItemsContent)
+	
+	invWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})
+	takeWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})
+	
+	invWinStack := container.NewStack(invWinBacking, invBox)
+	takeWinStack := container.NewStack(takeWinBacking, takeItemsBox)
 
-	rightSideContent := container.NewHBox(layout.NewSpacer(), container.NewVBox(dPad, InvTitle, invContent, layout.NewSpacer()))
+	rightSideContent := container.NewHBox(layout.NewSpacer(), container.NewVBox(dPadRow, layout.NewSpacer(), invWinStack, takeWinStack))
 
 	return oRS, rightSideContent
 }
@@ -230,11 +252,14 @@ func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *
 
 	chatWindows := container.NewHBox(chatStack, logStack)
 
-	textBox := container.NewGridWithColumns(2, oBS.TextEntry, layout.NewSpacer())
+	content := container.NewVBox(chatWindows, oBS.TextEntry)
+	
+	rightSideSpacer := canvas.NewRectangle(color.Transparent)
+	rightSideSpacer.SetMinSize(fyne.NewSize(400, 0))
+	
+	buttonsCentered := container.NewVBox(layout.NewSpacer(), container.NewHBox(layout.NewSpacer(), oBS.QueryButtonsContent, layout.NewSpacer()))
 
-	content := container.NewVBox(chatWindows, textBox)
-
-	withButtons := container.NewHBox(content, oBS.QueryButtonsContent)
+	withButtons := container.NewBorder(nil, nil, content, rightSideSpacer, buttonsCentered)
 
 	return oBS, withButtons
 }

@@ -20,6 +20,10 @@ func (cr *CommandRouter) handlePoll() {
 	if cr.tc == nil || !cr.LoggedIn {
 		return
 	}
+	
+	if cr.InZoneCount <= 1 {
+		return
+	}
 
 	if err := cr.tc.sendButtonCommandToServer("LOOK"); err != nil {
 		return
