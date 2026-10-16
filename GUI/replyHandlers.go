@@ -87,7 +87,7 @@ func (cr *CommandRouter) handleGold(reply ReplyContent) {
 
 	fyne.Do(func() {
 		cr.Game.OverlayTopSection.GoldLabel.Text = goldString
-		// cr.Game.OverlayBottomSection.LogWindow.addLine("💰 " + goldString)
+		cr.Game.OverlayTopSection.GoldLabel.Refresh()
 	})
 }
 
@@ -150,8 +150,8 @@ func (cr *CommandRouter) handleKeyItems(reply ReplyContent) {
 
 func (cr *CommandRouter) handleLook(reply ReplyContent) {
 	var (
-		roomExits []string
-		npcLabels []string
+		roomExits  []string
+		npcLabels  []string
 		itemLabels []string
 	)
 
@@ -167,9 +167,9 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 	for _, id := range reply.Look.NPCs {
 		npcLabels = append(npcLabels, IDToLabel(id))
 	}
-	
+
 	slices.Sort(reply.Look.Items)
-	
+
 	for _, item := range reply.Look.Items {
 		itemLabels = append(itemLabels, IDToLabel(item))
 	}
@@ -193,9 +193,17 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 		oTS.RoomStatsInfo.ExitsList.SetText(strings.Join(roomExits, "\n"))
 		oTS.RoomStatsInfo.ItemsList.SetText(strings.Join(itemLabels, "\n"))
 
+		changed := !slices.Equal(cr.Game.OverlayRightSection.TakeList.ItemIDs, reply.Look.Items)
+
 		cr.Game.OverlayRightSection.TakeList.ItemIDs = reply.Look.Items
 		cr.Game.OverlayRightSection.TakeList.List.Refresh()
-		cr.Game.OverlayRightSection.TakeList.List.ScrollToBottom()
+
+		if changed {
+			cr.Game.OverlayRightSection.TakeList.List.ScrollToBottom()
+		}
+
+		cr.Game.BottomSection.NPCTargetIDs = reply.Look.NPCs
+
 	})
 
 	if reply.Look.Room.ID != cr.CurrentZone {
@@ -375,12 +383,33 @@ func (cr *CommandRouter) handleRespawn(reply ReplyContent) {
 }
 
 func (cr *CommandRouter) handleRewards(reply ReplyContent) {
+	var (
+		goldLine string
+		kiLine   string
+	)
+
 	if reply.Rewards.Gold > 0 {
-		goldLine := fmt.Sprintf("🎁 %s receives %d gold.", reply.RewardReceiver, reply.Rewards.Gold)
+		goldLine = fmt.Sprintf("🎁 %s receives %d gold.", reply.RewardReceiver, reply.Rewards.Gold)
 	}
-	
+
 	if reply.Rewards.KeyItem != "" {
-		kiLine := fmt.Sprintf("🎁 %s receives %s.", reply.RewardReceiver, reply.Rewards.KeyItem)
+		kiLine = fmt.Sprintf("🎁 %s receives %s.", reply.RewardReceiver, reply.Rewards.KeyItem)
+	}
+
+	fyne.Do(func() {
+		if goldLine != "" {
+			cr.Game.OverlayBottomSection.LogWindow.addLine(goldLine)
+		}
+
+		if kiLine != "" {
+			cr.Game.OverlayBottomSection.LogWindow.addLine(kiLine)
+		}
+	})
+
+	if goldLine != "" && cr.PlayerUsername == reply.RewardReceiver {
+		if err := cr.tc.sendButtonCommandToServer("GOLD"); err != nil {
+			cr.Game.displayGameError(err.Error())
+		}
 	}
 }
 
@@ -406,6 +435,7 @@ func (cr *CommandRouter) handleStatus(reply ReplyContent) {
 		cr.Game.TopSection.HPBar.Max = float64(maxHP)
 		cr.Game.TopSection.HPBar.SetValue(float64(hp))
 		cr.Game.OverlayTopSection.PlayerStatusLabel.Text = status
+		cr.Game.OverlayTopSection.PlayerStatusLabel.Refresh()
 	})
 }
 

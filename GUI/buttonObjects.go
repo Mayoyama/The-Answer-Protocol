@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -62,4 +63,71 @@ func createStatusButton(label, cmd string, cmdChan chan<- string) *widget.Button
 	return newButton
 }
 
+func createCmdPrefillButton(label, prefillText string, textEntryWidget *widget.Entry, textCanvas fyne.Canvas) *widget.Button {
+	newButton := widget.NewButton(label, func() {
+		textEntryWidget.SetText(prefillText)
+		textEntryWidget.CursorColumn = len(prefillText)
+		textEntryWidget.Refresh()
+		textCanvas.Focus(textEntryWidget)
+	})
 
+	return newButton
+}
+
+func createShowHideButton(overlayWidgets []fyne.CanvasObject) *widget.Button {
+	uiHidden := false
+
+	var newButton *widget.Button
+
+	newButton = widget.NewButton("🖼️", func() {
+		if uiHidden {
+			uiHidden = false
+
+			for _, object := range overlayWidgets {
+				object.Show()
+			}
+
+			newButton.SetText("🖼️")
+
+		} else {
+			uiHidden = true
+
+			for _, object := range overlayWidgets {
+				object.Hide()
+			}
+
+			newButton.SetText("👀")
+		}
+	})
+
+	return newButton
+}
+
+func createPopUpMenuButton(label, cmd string, menuListContent *[]string, cmdChan chan<- string, winCanvas fyne.Canvas) *widget.Button {
+	var newButton *widget.Button
+
+	newButton = widget.NewButton(label, func() {
+		var menuItems []*fyne.MenuItem
+
+		for _, id := range *menuListContent {
+			item := fyne.NewMenuItem(IDToLabel(id), func() {
+				select {
+				case cmdChan <- cmd + " " + id:
+				default:
+				}
+			})
+
+			menuItems = append(menuItems, item)
+		}
+
+		if len(menuItems) == 0 {
+			menuItems = append(menuItems, fyne.NewMenuItem("No Valid Target", func() {}))
+		}
+
+		menu := fyne.NewMenu("", menuItems...)
+		below := fyne.NewPos(0, newButton.Size().Height)
+		widget.ShowPopUpMenuAtRelativePosition(menu, winCanvas, below, newButton)
+	})
+
+	return newButton
+}

@@ -37,33 +37,33 @@ const (
 )
 
 type ReplyContent struct {
-	Type        ReplyType
-	Look        LookParse
-	Who         WhoParse
-	Status      StatusParse
-	HPHeal      HealParse
-	Presence    PresenceParse
-	ServerCount int
-	Quest       SingleQuestParse
-	Quests      []QuestsParse
-	Rewards RewardParse
+	Type           ReplyType
+	Look           LookParse
+	Who            WhoParse
+	Status         StatusParse
+	HPHeal         HealParse
+	Presence       PresenceParse
+	ServerCount    int
+	Quest          SingleQuestParse
+	Quests         []QuestsParse
+	Rewards        RewardParse
 	RewardReceiver string
-	Inventory   InventoryParse
-	KeyItems    KeyItemParse
-	TakeDrop    TakeDropItemParse
-	Gold        int
-	Examine     ExamineParse
-	Group       GroupActionParse
-	Chat        ChatParse
-	Attack      AttackParse
-	BattleFled  bool
-	Respawned   string
-	RoomID      string
-	NPCName     string
-	NPCText     string
-	NPCHeal     bool
-	Err         ErrParse
-	Other       string
+	Inventory      InventoryParse
+	KeyItems       KeyItemParse
+	TakeDrop       TakeDropItemParse
+	Gold           int
+	Examine        ExamineParse
+	Group          GroupActionParse
+	Chat           ChatParse
+	Attack         AttackParse
+	BattleFled     bool
+	Respawned      string
+	RoomID         string
+	NPCName        string
+	NPCText        string
+	NPCHeal        bool
+	Err            ErrParse
+	Other          string
 }
 
 type LookParse struct {
@@ -186,9 +186,13 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 		examine   ExamineParse
 		attack    AttackParse
 	)
-	
+
 	if receiver, amount, ok := isGoldReward(toParse); ok {
 		return ReplyContent{Type: ReplyReward, Rewards: RewardParse{Gold: amount}, RewardReceiver: receiver}, nil
+	}
+
+	if receiver, keyitem, ok := isKeyItemReward(toParse); ok {
+		return ReplyContent{Type: ReplyReward, Rewards: RewardParse{KeyItem: keyitem}, RewardReceiver: receiver}, nil
 	}
 
 	switch {
@@ -405,41 +409,41 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 
 func isGoldReward(line string) (string, int, bool) {
 	parts := strings.Fields(line)
-	
+
 	if len(parts) != 4 {
 		return "", 0, false
 	}
-	
+
 	if parts[1] != "receives" || parts[3] != "gold." {
 		return "", 0, false
 	}
-	
+
 	amount, err := strconv.Atoi(parts[2])
-	
+
 	if err != nil {
 		return "", 0, false
 	}
-	
-	return parts[0], amount, true 
+
+	return parts[0], amount, true
 }
 
 func isKeyItemReward(line string) (string, string, bool) {
 	noDot := strings.TrimSuffix(line, ".")
 	parts := strings.Fields(noDot)
-	
+
 	if len(parts) < 3 {
 		return "", "", false
 	}
-	
+
 	if parts[1] != "receives" {
 		return "", "", false
 	}
-	
+
 	if !strings.HasSuffix(line, ".") {
-		return "", "", false	
+		return "", "", false
 	}
-	
-	rewardItem := strings.Join(parts[3:], " ")
-	
+
+	rewardItem := strings.Join(parts[2:], " ")
+
 	return parts[0], rewardItem, true
 }

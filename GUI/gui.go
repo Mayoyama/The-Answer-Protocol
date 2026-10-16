@@ -41,7 +41,7 @@ func main() {
 	}
 
 	login := buildLoginScreen(loginRequests)
-	game := buildGameScreen(tapConnRequests)
+	game := buildGameScreen(tapConnRequests, win.Canvas())
 
 	win.SetContent(login.Content)
 	win.Resize(fyne.NewSize(login_win_w, login_win_h))

@@ -48,6 +48,7 @@ func (cr *CommandRouter) setBattleMode(on bool) {
 				oTS.BattleLog.addLine(separator)
 			}
 
+			cr.Game.BottomSection.FleeButton.Enable()
 			oTS.ZoneLookContent.Hide()
 			oTS.BattleLogContent.Show()
 			oTS.BattleSwapStack.Refresh()
@@ -221,6 +222,7 @@ func (cr *CommandRouter) endBattleMode() {
 			oTS.BattleLogContent.Show()
 			oTS.BattleSwapStack.Refresh()
 			oTS.BattleLog.Scroll.ScrollToBottom()
+			cr.Game.BottomSection.FleeButton.Disable()
 		})
 
 		cr.startBattleLogHideTimer()

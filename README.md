@@ -119,21 +119,22 @@ OK {"hp":100,"max_hp":100,"status":"healthy"}
 
 The GUI client (`GUI/`, Go with Fyne v2.8.1) is in progress. Its design (layout, elements, which subject requirement each one covers, refresh plan) is in [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
 
-- **Design:** one router goroutine owns the connection and all connection state; widget callbacks only send requests on channels, and widgets are updated through `fyne.Do`. `TAPResponsesParser.go` turns each server line into a typed reply.
+- **Design:** one router goroutine owns the connection and all connection state; widget callbacks only send requests on channels, and widgets are updated through `fyne.Do`. `serverResponseParser.go` turns each server line into a typed reply.
 - **Login:** the name is trimmed and checked (2–10 characters) before anything is sent; server errors (e.g. `ERR 201 NAME_IN_USE`) are shown under the Connect button. A lost connection returns to the login screen.
 - **Built so far:**
   - a pixel-art background image for each room
   - a top row with an HP bar, the room name, and counters for players online and players in the room
-  - the player's status and gold
-  - a LOOK button with a room details panel (description, players, NPCs, exits, items); LOOK is also polled every 3.5 seconds, so the panel stays current
-  - items in the room are taken by clicking them; the inventory list drops an item when clicked and updates right after each take or drop
+  - the player's status and gold (gold is refreshed after a gold reward)
+  - a LOOK button with a room details panel (description, players, NPCs, exits, items); while other players are in the room, LOOK is also polled every 3.5 seconds, so the panel stays current
+  - a DROP list (the inventory) and a TAKE list (the room's items): clicking an item drops or takes it, and the inventory updates right after each take or drop
   - a battle log that opens during a fight (one entry per round, a divider per fight) and hides 5 seconds after it ends; a Battle Log button shows it again
   - direction buttons for moving, disabled during a rate-limit timeout (`ERR 750`)
-  - INVENTORY, KEYITEMS, WHO and QUESTS buttons, with results in the log
   - separate chat and log windows; the chat window also shows NPC dialogue (in either TALK reply format) and fight announcements, and each line starts with an emoji showing its kind
   - a text field for typing raw protocol commands
+  - a bottom section with chat buttons (Global, Room, Group, clear) and three button grids: GROUP (Create, Join, Invite, Leave), INTERACTIONS (Talk, Attack, Quest, Flee) and QUERIES (Inventory, Quests, Key Items, Who). Talk, Attack and Quest open a menu of the room's NPCs; chat, Invite and Join fill the text field for the rest of the command; Flee is enabled only during a fight
+  - Show/Hide UI and Quit buttons
 
-  Not built yet: the RPG menu (Talk, Attack, Quest, Group, Chat), the STATUS and Quit buttons, the Flee entry and Show/Hide UI.
+  Not built yet: the STATUS button, and disabling the other command buttons (not only the direction buttons) during a rate-limit timeout.
 - **Known limitation:** replies don't name the command they answer, and an empty list (`OK []`) looks the same for INVENTORY, KEYITEMS and QUESTS. The GUI matches it to the last of these three that was sent, so if two different ones are sent before the first reply arrives, the "None" line can name the wrong command.
 
 [↑ Back to top](#top)
@@ -467,7 +468,7 @@ Go to the Fallow Field (from the Taverne: east, south, east, east) and `ATTACK b
 
 ### GUI
 
-`make run-client-gui` with the server running. A name that is empty or one character long is refused without contacting the server; a name in use shows `ERR 201`; stopping the server brings back the login screen. In game, click an item in the room details to take it and in the inventory to drop it; a second client sees the change within 3.5 seconds. `ATTACK cave bat` in the Cistern opens the battle log. Compare the game screen with [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
+`make run-client-gui` with the server running. A name that is empty or one character long is refused without contacting the server; a name in use shows `ERR 201`; stopping the server brings back the login screen. In game, click an item in the TAKE list to take it and in the DROP list to drop it; a second client in the same room sees the change within 3.5 seconds. TALK, ATTACK and QUEST open a menu of the room's NPCs; Show/Hide UI hides the overlays and shows them again as they were. `ATTACK` on the Cave Bat in the Cistern opens the battle log and enables Flee. Compare the game screen with [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
 
 ### World validation
 
@@ -494,7 +495,7 @@ AI (Claude) was used during development for:
 - Simulating fights to balance enemy stats
 - Reviewing code: the login path, rate limiting, `EXAMINE`, `KEYITEMS`, `quest_items`, and checking `world.yaml` for broken references
 - Checking the server's replies and events against the RFC and the subject PDF
-- GUI client: explaining Fyne's API and Go concurrency patterns, and reviewing the connection layer, parser, game screen, battle log and item lists
+- GUI client: explaining Fyne's API and Go concurrency patterns, and reviewing the connection layer, parser, game screen, battle log, item lists and bottom section
 - Drafting and formatting this README and the GUI design record, and checking them against the subject and the code
 
 [↑ Back to top](#top)

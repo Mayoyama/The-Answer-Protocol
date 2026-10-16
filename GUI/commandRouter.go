@@ -192,7 +192,7 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 		case ReplyRespawned:
 			cr.handleRespawn(reply)
 			cr.endBattleMode()
-			
+
 		case ReplyReward:
 			cr.handleRewards(reply)
 
@@ -278,6 +278,7 @@ func (cr *CommandRouter) resetServerState() {
 	cr.QueryWaitingForReply = ""
 
 	oTS := cr.Game.OverlayTopSection
+	oRS := cr.Game.OverlayRightSection
 	oBS := cr.Game.OverlayBottomSection
 
 	fyne.Do(func() {
@@ -293,5 +294,12 @@ func (cr *CommandRouter) resetServerState() {
 		oTS.BattleLogContent.Hide()
 		oTS.ZoneLookContent.Show()
 		oTS.BattleSwapStack.Refresh()
+
+		cr.Game.BottomSection.NPCTargetIDs = nil
+
+		oRS.InventoryList.ItemIDs = nil
+		oRS.InventoryList.List.Refresh()
+		oRS.TakeList.ItemIDs = nil
+		oRS.TakeList.List.Refresh()
 	})
 }
