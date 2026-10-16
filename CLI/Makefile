@@ -1,10 +1,10 @@
-.PHONY: install run run-go-client lint clean format
+.PHONY: install run run-rust-client lint clean format
 
 run:
-	@cargo run
-
-run-go-client:
 	@go run CLI
+
+run-rust-client:
+	@cargo run
 
 install:
 	go build

@@ -2,20 +2,25 @@ package main
 
 import (
 	"fmt"
+	"image/color"
+	"strings"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"image/color"
-	"strings"
 )
 
 type OverlayTopSection struct {
+	StatusButton      *widget.Button
 	RoomDetailsButton *widget.Button
 	BattleLogButton   *widget.Button
 	GoldLabel         *canvas.Text
 	PlayerStatusLabel *canvas.Text
+	InPartyLabel      *canvas.Text
+	StatsGoldStack    *fyne.Container
 	StatsGoldContent  *fyne.Container
 
 	RoomStatsInfo   *RoomStatsWidget
@@ -50,13 +55,21 @@ func buildTopOverlay(tapConnRequests chan<- string) *OverlayTopSection {
 
 	oTS := &OverlayTopSection{}
 
+	oTS.StatusButton = oTS.createStatusGoldButton(tapConnRequests)
+	statusButtonThemeBox := container.NewThemeOverride(oTS.StatusButton, SmallTextTheme{Theme: theme.DefaultTheme()})
+
 	oTS.PlayerStatusLabel = canvas.NewText("Status: -", color.White)
 	oTS.PlayerStatusLabel.Alignment = fyne.TextAlignLeading
 	oTS.GoldLabel = canvas.NewText("Gold: -", color.White)
 	oTS.GoldLabel.Alignment = fyne.TextAlignLeading
-	statsGoldBox := container.NewVBox(oTS.PlayerStatusLabel, oTS.GoldLabel)
+	oTS.InPartyLabel = canvas.NewText("In Party: ✖️", color.White)
+
+	statsGoldBox := container.NewVBox(oTS.PlayerStatusLabel, oTS.GoldLabel, oTS.InPartyLabel)
 	statsGoldWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})
-	oTS.StatsGoldContent = container.NewStack(statsGoldWinBacking, statsGoldBox)
+
+	oTS.StatsGoldStack = container.NewStack(statsGoldWinBacking, statsGoldBox)
+	oTS.StatsGoldStack.Hide()
+	oTS.StatsGoldContent = container.New(layout.NewCustomPaddedVBoxLayout(0), container.NewHBox(statusButtonThemeBox), oTS.StatsGoldStack)
 
 	oTS.RoomStatsInfo = &RoomStatsWidget{}
 
@@ -120,35 +133,9 @@ func buildTopOverlay(tapConnRequests chan<- string) *OverlayTopSection {
 
 	oTS.BattleSwapStack = container.NewStack(oTS.ZoneLookContent, oTS.BattleLogContent)
 
-	oTS.RoomDetailsButton = widget.NewButton("LOOK", func() {
-		if oTS.ZoneLookContent.Visible() {
-			oTS.ZoneLookContent.Hide()
+	oTS.RoomDetailsButton = oTS.createRoomDetailsButton(tapConnRequests)
 
-		} else {
-			oTS.BattleLogContent.Hide()
-			oTS.ZoneLookContent.Show()
-
-			select {
-			case tapConnRequests <- "LOOK":
-			default:
-			}
-		}
-
-		oTS.BattleSwapStack.Refresh()
-	})
-
-	oTS.BattleLogButton = widget.NewButton("Battle Log", func() {
-		if oTS.BattleLogContent.Visible() {
-			oTS.BattleLogContent.Hide()
-
-		} else {
-			oTS.ZoneLookContent.Hide()
-			oTS.BattleLogContent.Show()
-		}
-
-		oTS.BattleSwapStack.Refresh()
-		oTS.BattleLog.Scroll.ScrollToBottom()
-	})
+	oTS.BattleLogButton = oTS.createBattleLogButton()
 
 	return oTS
 }

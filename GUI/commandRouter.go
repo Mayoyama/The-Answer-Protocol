@@ -24,6 +24,7 @@ type CommandRouter struct {
 	PendingName     string
 
 	PlayerUsername       string
+	inGroup              bool
 	TalkTargetName       string
 	CurrentZone          string
 	InZoneCount          int
@@ -115,6 +116,7 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 			fyne.Do(func() {
 				cr.Win.SetContent(cr.Game.GameContent)
 				cr.Win.Resize(fyne.NewSize(backdrop_w, backdrop_h+element_padding_h))
+				cr.Win.CenterOnScreen()
 			})
 
 		} else if strings.HasPrefix(trimmedRes, "ERR") {
@@ -167,6 +169,7 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 			cr.handleGold(reply)
 
 		case ReplyGroup:
+			cr.handleGroup(reply)
 
 		case ReplyInventory:
 			cr.handleInventory(reply)
@@ -269,6 +272,7 @@ func (cr *CommandRouter) resetServerState() {
 	cr.LoggedIn = false
 	cr.Quitting = false
 	cr.FightOpen = false
+	cr.inGroup = false
 	cr.PendingName = ""
 	cr.CurrentZone = ""
 	cr.PlayerUsername = ""
@@ -282,6 +286,9 @@ func (cr *CommandRouter) resetServerState() {
 	oBS := cr.Game.OverlayBottomSection
 
 	fyne.Do(func() {
+		oTS.InPartyLabel.Text = "In Party: ✖️"
+		oTS.InPartyLabel.Refresh()
+
 		oTS.BattleLog.TextWin.Segments = nil
 		oTS.BattleLog.TextWin.Refresh()
 
@@ -296,6 +303,7 @@ func (cr *CommandRouter) resetServerState() {
 		oTS.BattleSwapStack.Refresh()
 
 		cr.Game.BottomSection.NPCTargetIDs = nil
+		cr.Game.BottomSection.ChatPartyButton.Disable()
 
 		oRS.InventoryList.ItemIDs = nil
 		oRS.InventoryList.List.Refresh()

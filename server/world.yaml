@@ -350,7 +350,7 @@ quests:
     requires: ""
     steps:
       - talk_to: george
-        dialogue: "Hey there! Be a champ and take this [keyitem.Loaf] to Kassandra for me, would you? Thanks!"
+        dialogue: "Hey there! Be a champ and take this 🔑[Loaf of Bread] to Kassandra for me, would you? Thanks!"
         grants_key_items:
           - "key_item.loaf_of_bread"
       - talk_to: kassandra

@@ -2,13 +2,15 @@ package main
 
 import (
 	"fmt"
+	"image/color"
+	"time"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"image/color"
-	"time"
 )
 
 type GameScreen struct {
@@ -29,12 +31,10 @@ type GameScreen struct {
 	BottomSection *GSBottomSection
 	BottomContent *fyne.Container
 
-	ErrTimer     *time.Timer
-	LockoutTimer *time.Timer
-
 	ShowHideButton *widget.Button
 
-	GameErr *widget.Label
+	GameErr  *widget.Label
+	ErrTimer *time.Timer
 }
 
 type GSTopSection struct {
@@ -50,6 +50,7 @@ type GSBottomSection struct {
 	ChatPartyButton  *widget.Button
 	ClearChatButton  *widget.Button
 	ChatContent      *fyne.Container
+	ChatTheme        *container.ThemeOverride
 
 	PartyCreateButton *widget.Button
 	PartyInviteButton *widget.Button
@@ -70,8 +71,9 @@ type GSBottomSection struct {
 	WhoButton           *widget.Button
 	QueryButtonsContent *fyne.Container
 
-	QuitButton   *widget.Button
-	RightContent *fyne.Container
+	ExamineButton *widget.Button
+	QuitButton    *widget.Button
+	RightContent  *fyne.Container
 
 	NPCTargetIDs []string
 	SelectedCmd  string
@@ -118,6 +120,11 @@ func buildTopSection() (*GSTopSection, *fyne.Container) {
 	return gsTop, topRowContent
 }
 
+// rust R: 168, G: 72, B: 30, A: 255
+// olive R: 107, G: 112, B: 40, A: 255
+// steelblue R: 54, G: 92, B: 140, A: 255
+// plum R: 110, G: 48, B: 90, A: 255
+
 func (gs *GameScreen) buildBottomSection(tapConnRequests chan<- string, winCanvas fyne.Canvas) {
 	gs.BottomSection = &GSBottomSection{}
 
@@ -129,6 +136,9 @@ func (gs *GameScreen) buildBottomSection(tapConnRequests chan<- string, winCanva
 	gsBS.ChatPartyButton = createCmdPrefillButton("P", "CHAT GROUP ", oBS.TextEntry, winCanvas)
 	gsBS.ClearChatButton = createCmdPrefillButton("C", "", oBS.TextEntry, winCanvas)
 	gsBS.ChatContent = container.NewHBox(gsBS.ChatGlobalButton, gsBS.ChatRoomButton, gsBS.ChatPartyButton, gsBS.ClearChatButton)
+	gsBS.ChatTheme = container.NewThemeOverride(gsBS.ChatContent, ButtonColorTheme{Theme: theme.DefaultTheme(), ButtonColor: color.NRGBA{R: 54, G: 92, B: 140, A: 255}})
+
+	gsBS.ChatPartyButton.Disable()
 
 	partyLabel := widget.NewLabel("GROUP")
 	gsBS.PartyCreateButton = createStatusButton("CREATE", "GROUP CREATE", tapConnRequests)
@@ -136,8 +146,9 @@ func (gs *GameScreen) buildBottomSection(tapConnRequests chan<- string, winCanva
 	gsBS.PartyJoinButton = createCmdPrefillButton("JOIN", "GROUP JOIN ", oBS.TextEntry, winCanvas)
 	gsBS.PartyLeaveButton = createStatusButton("LEAVE", "GROUP LEAVE", tapConnRequests)
 	partyButtons := container.NewGridWithColumns(2, gsBS.PartyCreateButton, gsBS.PartyJoinButton, gsBS.PartyInviteButton, gsBS.PartyLeaveButton)
+	colorPartyButtons := container.NewThemeOverride(partyButtons, ButtonColorTheme{Theme: theme.DefaultTheme(), ButtonColor: color.NRGBA{R: 110, G: 48, B: 90, A: 255}})
 
-	gsBS.PartyContent = container.NewVBox(layout.NewSpacer(), partyLabel, partyButtons, layout.NewSpacer())
+	gsBS.PartyContent = container.NewVBox(layout.NewSpacer(), partyLabel, colorPartyButtons, layout.NewSpacer())
 
 	leftContent := container.NewVBox(gs.BottomSection.ChatContent, gs.BottomSection.PartyContent)
 
@@ -146,24 +157,28 @@ func (gs *GameScreen) buildBottomSection(tapConnRequests chan<- string, winCanva
 	gsBS.AttackButton = createPopUpMenuButton("ATTACK", "ATTACK", &gsBS.NPCTargetIDs, tapConnRequests, winCanvas)
 	gsBS.FleeButton = createStatusButton("FLEE", "FLEE", tapConnRequests)
 	actionButtons := container.NewGridWithColumns(2, gsBS.TalkButton, gsBS.AttackButton, gsBS.QuestButton, gsBS.FleeButton)
+	colorActionButtons := container.NewThemeOverride(actionButtons, ButtonColorTheme{Theme: theme.DefaultTheme(), ButtonColor: color.NRGBA{R: 168, G: 72, B: 30, A: 255}})
 
 	interactionsLabel := widget.NewLabel("INTERACTIONS")
-	gsBS.MiddleContent = container.NewVBox(layout.NewSpacer(), interactionsLabel, actionButtons)
+	gsBS.MiddleContent = container.NewVBox(layout.NewSpacer(), interactionsLabel, colorActionButtons)
 
-	gsBS.KeyItemButton = createStatusButton("Key Items", "KEYITEMS", tapConnRequests)
-	gsBS.InventoryButton = createStatusButton("Inventory", "INVENTORY", tapConnRequests)
-	gsBS.QuestsButton = createStatusButton("Quests", "QUESTS", tapConnRequests)
-	gsBS.WhoButton = createStatusButton("Who", "WHO", tapConnRequests)
+	gsBS.KeyItemButton = createStatusButton("KEY ITEMS", "KEYITEMS", tapConnRequests)
+	gsBS.InventoryButton = createStatusButton("INVENTORY", "INVENTORY", tapConnRequests)
+	gsBS.QuestsButton = createStatusButton("QUESTS", "QUESTS", tapConnRequests)
+	gsBS.WhoButton = createStatusButton("WHO", "WHO", tapConnRequests)
 
 	queriesLabel := widget.NewLabel("QUERIES")
 	queryButtons := container.NewGridWithColumns(2, gsBS.InventoryButton, gsBS.QuestsButton, gsBS.KeyItemButton, gsBS.WhoButton)
-	gsBS.QueryButtonsContent = container.NewVBox(layout.NewSpacer(), queriesLabel, queryButtons)
+	colorQueryButtons := container.NewThemeOverride(queryButtons, ButtonColorTheme{Theme: theme.DefaultTheme(), ButtonColor: color.NRGBA{R: 107, G: 112, B: 40, A: 255}})
+	gsBS.QueryButtonsContent = container.NewVBox(layout.NewSpacer(), queriesLabel, colorQueryButtons)
 
 	mainSections := container.NewGridWithColumns(3, leftContent, gsBS.MiddleContent, gsBS.QueryButtonsContent)
 
+	gsBS.ExamineButton = createExaminePopUpButton(oBS.TextEntry, winCanvas)
+
 	gsBS.QuitButton = createStatusButton("👋", "QUIT", tapConnRequests)
 
-	rightButtonsBox := container.NewVBox(gs.ShowHideButton, layout.NewSpacer(), gsBS.QuitButton)
+	rightButtonsBox := container.NewVBox(gs.ShowHideButton, gsBS.ExamineButton, layout.NewSpacer(), gsBS.QuitButton)
 
 	gs.BottomContent = container.NewBorder(nil, nil, nil, rightButtonsBox, mainSections)
 
@@ -182,7 +197,7 @@ func buildGameScreen(tapConnRequests chan<- string, winCanvas fyne.Canvas) *Game
 
 	gs.GameScreen = buildNewZoneImage(backdrop_w, backdrop_h)
 
-	gs.OverlayTopSection = buildTopOverlay(tapConnRequests) //, gs.OverlayTopContent
+	gs.OverlayTopSection = buildTopOverlay(tapConnRequests)
 
 	gs.OverlayRightSection, gs.OverlayRightContent = buildRightOverlay(tapConnRequests)
 
@@ -192,7 +207,8 @@ func buildGameScreen(tapConnRequests chan<- string, winCanvas fyne.Canvas) *Game
 		container.NewGridWrap(fyne.NewSize(140, 25), gs.OverlayTopSection.RoomDetailsButton),
 		container.NewGridWrap(fyne.NewSize(140, 25), gs.OverlayTopSection.BattleLogButton)))
 
-	roomInfoButtonBox := container.NewVBox(roomInfoCentered, container.NewCenter(gs.OverlayTopSection.BattleSwapStack))
+	colorRoomInfoCentered := container.NewThemeOverride(roomInfoCentered, ButtonColorTheme{Theme: theme.DefaultTheme(), ButtonColor: color.NRGBA{R: 54, G: 92, B: 140, A: 255}})
+	roomInfoButtonBox := container.NewVBox(colorRoomInfoCentered, container.NewCenter(gs.OverlayTopSection.BattleSwapStack))
 
 	overlayContent := container.NewBorder(roomInfoButtonBox, gs.OverlayBottomContent, gameErrorContent, nil)
 

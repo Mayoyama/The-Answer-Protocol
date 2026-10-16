@@ -90,7 +90,7 @@ Numbers match the element table in section 3. Positions are approximate; the dia
 
 - Two separate windows, no tabs. The PDF requires the chat view (Global / Room / Group) to be separate from the log view.
 - Both windows scroll so players can read the history. New messages scroll into view **only when the player is already at the bottom**. Each window keeps the last 250 lines.
-- Every line starts with an emoji that shows its kind (e.g. 💬 chat, 🗣️ NPC dialogue, 📜 quests, ⚠️ errors).
+- Every line starts with an emoji that shows its kind (e.g. 💬 chat, 🗣️ NPC dialogue, 📜 quests, 🔺 errors).
 
 **Chat window**
 

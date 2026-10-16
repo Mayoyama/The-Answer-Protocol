@@ -52,10 +52,72 @@ func createDirectionButton(direction string, requests chan<- string) *widget.But
 	return dirButton
 }
 
-func createStatusButton(label, cmd string, cmdChan chan<- string) *widget.Button {
+func (oTS *OverlayTopSection) createStatusGoldButton(tapConnRequests chan<- string) *widget.Button {
+	newButton := widget.NewButton("STATUS", func() {
+
+		if oTS.StatsGoldStack.Visible() {
+			oTS.StatsGoldStack.Hide()
+
+		} else {
+			oTS.StatsGoldStack.Show()
+
+			select {
+			case tapConnRequests <- "STATUS":
+			default:
+			}
+
+			select {
+			case tapConnRequests <- "GOLD":
+			default:
+			}
+		}
+	})
+
+	return newButton
+}
+
+func (oTS *OverlayTopSection) createRoomDetailsButton(tapConnRequests chan<- string) *widget.Button {
+	newButton := widget.NewButton("LOOK", func() {
+		if oTS.ZoneLookContent.Visible() {
+			oTS.ZoneLookContent.Hide()
+
+		} else {
+			oTS.BattleLogContent.Hide()
+			oTS.ZoneLookContent.Show()
+
+			select {
+			case tapConnRequests <- "LOOK":
+			default:
+			}
+		}
+
+		oTS.BattleSwapStack.Refresh()
+	})
+
+	return newButton
+}
+
+func (oTS *OverlayTopSection) createBattleLogButton() *widget.Button {
+	newButton := widget.NewButton("Battle Log", func() {
+		if oTS.BattleLogContent.Visible() {
+			oTS.BattleLogContent.Hide()
+
+		} else {
+			oTS.ZoneLookContent.Hide()
+			oTS.BattleLogContent.Show()
+		}
+
+		oTS.BattleSwapStack.Refresh()
+		oTS.BattleLog.Scroll.ScrollToBottom()
+	})
+
+	return newButton
+}
+
+func createStatusButton(label, cmd string, tapConnRequests chan<- string) *widget.Button {
 	newButton := widget.NewButton(label, func() {
 		select {
-		case cmdChan <- cmd:
+		case tapConnRequests <- cmd:
 		default:
 		}
 	})
@@ -65,13 +127,17 @@ func createStatusButton(label, cmd string, cmdChan chan<- string) *widget.Button
 
 func createCmdPrefillButton(label, prefillText string, textEntryWidget *widget.Entry, textCanvas fyne.Canvas) *widget.Button {
 	newButton := widget.NewButton(label, func() {
-		textEntryWidget.SetText(prefillText)
-		textEntryWidget.CursorColumn = len(prefillText)
-		textEntryWidget.Refresh()
-		textCanvas.Focus(textEntryWidget)
+		prefillEntry(prefillText, textEntryWidget, textCanvas)
 	})
 
 	return newButton
+}
+
+func prefillEntry(prefillText string, textEntryWidget *widget.Entry, textCanvas fyne.Canvas) {
+	textEntryWidget.SetText(prefillText)
+	textEntryWidget.CursorColumn = len(prefillText)
+	textEntryWidget.Refresh()
+	textCanvas.Focus(textEntryWidget)
 }
 
 func createShowHideButton(overlayWidgets []fyne.CanvasObject) *widget.Button {
@@ -103,7 +169,7 @@ func createShowHideButton(overlayWidgets []fyne.CanvasObject) *widget.Button {
 	return newButton
 }
 
-func createPopUpMenuButton(label, cmd string, menuListContent *[]string, cmdChan chan<- string, winCanvas fyne.Canvas) *widget.Button {
+func createPopUpMenuButton(label, cmd string, menuListContent *[]string, tapConnRequests chan<- string, winCanvas fyne.Canvas) *widget.Button {
 	var newButton *widget.Button
 
 	newButton = widget.NewButton(label, func() {
@@ -112,7 +178,7 @@ func createPopUpMenuButton(label, cmd string, menuListContent *[]string, cmdChan
 		for _, id := range *menuListContent {
 			item := fyne.NewMenuItem(IDToLabel(id), func() {
 				select {
-				case cmdChan <- cmd + " " + id:
+				case tapConnRequests <- cmd + " " + id:
 				default:
 				}
 			})
@@ -127,6 +193,31 @@ func createPopUpMenuButton(label, cmd string, menuListContent *[]string, cmdChan
 		menu := fyne.NewMenu("", menuItems...)
 		below := fyne.NewPos(0, newButton.Size().Height)
 		widget.ShowPopUpMenuAtRelativePosition(menu, winCanvas, below, newButton)
+	})
+
+	return newButton
+}
+
+func createExaminePopUpButton(textEntryWidget *widget.Entry, textCanvas fyne.Canvas) *widget.Button {
+	var newButton *widget.Button
+
+	newButton = widget.NewButton("🔍", func() {
+		npcItem := fyne.NewMenuItem("NPC", func() {
+			prefillEntry("EXAMINE NPC ", textEntryWidget, textCanvas)
+		})
+
+		itemItem := fyne.NewMenuItem("ITEM", func() {
+			prefillEntry("EXAMINE ITEM ", textEntryWidget, textCanvas)
+		})
+
+		kiItem := fyne.NewMenuItem("KEY ITEM", func() {
+			prefillEntry("EXAMINE KEYITEM ", textEntryWidget, textCanvas)
+		})
+
+		menu := fyne.NewMenu("", npcItem, itemItem, kiItem)
+		popUp := widget.NewPopUpMenu(menu, textCanvas)
+		above := fyne.NewPos(0, -popUp.Size().Height)
+		popUp.ShowAtRelativePosition(above, newButton)
 	})
 
 	return newButton

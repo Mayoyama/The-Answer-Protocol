@@ -1,7 +1,7 @@
 .PHONY: install run lint clean format
 
 run:
-	go run GUI
+	@go run GUI
 
 install:
 	go mod download

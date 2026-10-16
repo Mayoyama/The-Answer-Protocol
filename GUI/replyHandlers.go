@@ -5,7 +5,6 @@ import (
 	"fyne.io/fyne/v2"
 	"slices"
 	"strings"
-	"time"
 )
 
 func (cr *CommandRouter) resolveEmptyList() {
@@ -67,14 +66,14 @@ func (cr *CommandRouter) handleChat(reply ReplyContent) {
 }
 
 func (cr *CommandRouter) handleExamine(reply ReplyContent) {
-	examineString := fmt.Sprintf("🔍 Name: %s. Description: %s.", reply.Examine.Name, reply.Examine.Description)
+	examineString := fmt.Sprintf("🔍 Name: %s\nDescription: %s", reply.Examine.Name, reply.Examine.Description)
 
 	if reply.Examine.Obtainable {
-		examineString += " Obtainable: Yes."
+		examineString += "\nObtainable: Yes."
 	}
 
 	if reply.Examine.NPCRole != "" {
-		examineString += fmt.Sprintf(" NPC Role: %s.", SplitSnakeCase(reply.Examine.NPCRole))
+		examineString += fmt.Sprintf("\nNPC Role: %s.", SplitSnakeCase(reply.Examine.NPCRole))
 	}
 
 	fyne.Do(func() {
@@ -88,6 +87,54 @@ func (cr *CommandRouter) handleGold(reply ReplyContent) {
 	fyne.Do(func() {
 		cr.Game.OverlayTopSection.GoldLabel.Text = goldString
 		cr.Game.OverlayTopSection.GoldLabel.Refresh()
+	})
+}
+
+func (cr *CommandRouter) handleGroup(reply ReplyContent) {
+	var groupString string
+
+	switch reply.Group.Action {
+	case "CREATE":
+		groupString = "👥 You created a new group!"
+		cr.inGroup = true
+
+	case "INVITE":
+		groupString = fmt.Sprintf("📯 %s invites you to a group!", reply.Group.ByWho)
+
+	case "JOIN":
+		if cr.inGroup {
+			groupString = fmt.Sprintf("🔗 %s joins the group.", reply.Group.ByWho)
+
+		} else {
+			groupString = fmt.Sprintf("🔗 You join %s's group.", reply.Group.ByWho)
+			cr.inGroup = true
+		}
+
+	case "LEAVE":
+		if reply.Group.ByWho == cr.PlayerUsername {
+			groupString = "🍃 You leave the group."
+			cr.inGroup = false
+
+		} else {
+			groupString = fmt.Sprintf("👋 %s leaves the group.", reply.Group.ByWho)
+		}
+	}
+
+	inPT := cr.inGroup
+
+	fyne.Do(func() {
+		cr.Game.OverlayBottomSection.LogWindow.addLine(groupString)
+
+		if inPT {
+			cr.Game.BottomSection.ChatPartyButton.Enable()
+			cr.Game.OverlayTopSection.InPartyLabel.Text = "In Party: ✔️"
+			cr.Game.OverlayTopSection.InPartyLabel.Refresh()
+
+		} else {
+			cr.Game.BottomSection.ChatPartyButton.Disable()
+			cr.Game.OverlayTopSection.InPartyLabel.Text = "In Party: ✖️"
+			cr.Game.OverlayTopSection.InPartyLabel.Refresh()
+		}
 	})
 }
 
@@ -204,6 +251,16 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 
 		cr.Game.BottomSection.NPCTargetIDs = reply.Look.NPCs
 
+		for direction, button := range cr.Game.OverlayRightSection.DPad.DirButtonSet {
+			_, isExit := reply.Look.Room.Exits[direction]
+
+			if isExit {
+				button.Enable()
+
+			} else {
+				button.Disable()
+			}
+		}
 	})
 
 	if reply.Look.Room.ID != cr.CurrentZone {
@@ -318,39 +375,7 @@ func (cr *CommandRouter) handleReplyError(reply ReplyContent) {
 	cr.Game.displayGameError(reply.Err.Text)
 	cr.Quitting = false
 
-	if reply.Err.Code == 750 {
-		lockDuration := time.Minute
-
-		_, timeString, found := strings.Cut(reply.Err.Text, "Time remaining: ")
-
-		if found {
-			penaltyTime, parseErr := time.ParseDuration(strings.TrimSpace(timeString))
-
-			if parseErr == nil {
-				lockDuration = penaltyTime
-			}
-		}
-
-		if cr.Game.LockoutTimer != nil {
-			cr.Game.LockoutTimer.Stop()
-		}
-
-		fyne.Do(func() {
-			for _, button := range cr.Game.OverlayRightSection.DPad.DirButtonSet {
-				button.Disable()
-			}
-		})
-
-		cr.Game.LockoutTimer = time.AfterFunc(lockDuration, func() {
-			fyne.Do(func() {
-				for _, button := range cr.Game.OverlayRightSection.DPad.DirButtonSet {
-					button.Enable()
-				}
-			})
-		})
-	}
-
-	errLine := fmt.Sprintf("⚠️ ERROR: Code: %d, Reason: %s", reply.Err.Code, reply.Err.Text)
+	errLine := fmt.Sprintf("🔺 ERROR: %s (%d)", SplitSnakeCase(reply.Err.Text), reply.Err.Code)
 
 	fyne.Do(func() {
 		cr.Game.OverlayBottomSection.LogWindow.addLine(errLine)

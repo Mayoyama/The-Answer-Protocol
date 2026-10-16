@@ -17,8 +17,8 @@ run-server:
 run-client:
 	@$(MAKE) $(MAKE_FLAGS) CLI run
 
-run-go-client:
-	@$(MAKE) $(MAKE_FLAGS) CLI run-go-client
+run-rust-client:
+	@$(MAKE) $(MAKE_FLAGS) CLI run-rust-client
 
 run-client-gui:
 	@$(MAKE) $(MAKE_FLAGS) GUI run

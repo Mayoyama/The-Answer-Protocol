@@ -142,7 +142,6 @@ func (cr *CommandRouter) handleQuit() {
 		} else {
 			fyne.Do(func() {
 				cr.Login.ConnErr.SetText(quitMsg)
-
 			})
 		}
 

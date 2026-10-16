@@ -45,6 +45,7 @@ func main() {
 
 	win.SetContent(login.Content)
 	win.Resize(fyne.NewSize(login_win_w, login_win_h))
+	win.CenterOnScreen()
 
 	cr := &CommandRouter{
 		Win:                 win,

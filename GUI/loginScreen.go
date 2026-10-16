@@ -88,6 +88,7 @@ func (cr *CommandRouter) handleServerErr(err error) {
 		cr.Login.ConnButton.Enable()
 		cr.Win.SetContent(cr.Login.Content)
 		cr.Win.Resize(fyne.NewSize(login_win_w, login_win_h))
+		cr.Win.CenterOnScreen()
 	})
 
 	cr.resetServerState()
