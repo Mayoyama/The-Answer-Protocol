@@ -89,6 +89,7 @@ func main() {
 	go func() {
 		for {
 			response, err := TAPReader.ReadString('\n')
+
 			if err != nil {
 				serverErr <- err
 

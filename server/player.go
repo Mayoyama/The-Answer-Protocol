@@ -66,6 +66,7 @@ func newPlayer(username, startLoc string, conn net.Conn) *Player {
 		BattleSkill: 7,
 		Dexterity:   10,
 	}
+
 	return &Player{
 		Username:     username,
 		MaxHP:        100,
@@ -239,5 +240,4 @@ func printGoldBalance(player *Player) {
 
 	_, _ = fmt.Fprintln(player.Conn, msg)
 	slog.Info("SYS_MESSAGE", "player", pname, "message", msg, "command", "GOLD")
-
 }

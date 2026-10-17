@@ -117,7 +117,7 @@ world:
         - "item.broken_fence"
         - "item.field_flower"
       spawns:
-        - barbarian
+        - ruffian
 
 
 items:
@@ -222,8 +222,10 @@ npcs:
     name: George
     description: The tavern keeper, wiping down the same mug for the tenth time.
     dialogue:
-      - "Welcome, traveler. Mind the floorboards."
-      - "Haven't seen a stranger 'round these parts in weeks."
+      - "Welcome, traveler. Don't see many strangers 'round these parts."
+      - "Rest yer feet by the hearth. Don't get too close, mind. Lost a good pair o' boots that way."
+      - "Folk 'round here are a friendly lot. Some are just a bit shy, is all."
+      - "If yer lookin' for a bit o' coin, try askin' around town."
     stats:
       hp: 62
     attackable: false
@@ -237,6 +239,7 @@ npcs:
     dialogue:
       - "Fresh turnips, best in town!"
       - "Careful where you step, this square gets crowded."
+      - "Don't lean too hard on the crates, friend. Only just finished mending them."
     stats:
       hp: 55
     attackable: false
@@ -246,10 +249,11 @@ npcs:
 
   kassandra:
     name: Kassandra
-    description: "A cloaked figure watching the crowd from the fountain's edge."
+    description: "A cloaked figure by the fountain's edge, staring off into the distance."
     dialogue:
       - "They say the old well east of here holds secrets."
       - "You didn't hear this from me."
+      - "I told him to stay away..."
     stats:
       hp: 48
     attackable: false
@@ -275,6 +279,8 @@ npcs:
     dialogue:
       - "Ground's soft this time of year. Makes the work easier, if not the reason for it."
       - "I've heard the well at night. I don't go near it."
+      - "Here to pay your respects to someone?"
+      - "(mutters under his breath) Kassandra's late today..."
     stats:
       hp: 50
     attackable: false
@@ -300,21 +306,23 @@ npcs:
     dialogue:
       - "The wheel's older than I am. Some days it complains more than I do!"
       - "Mind the husks, dearie; they stick to your boots for days."
+      - "Tsk, can't believe that bear in boots trampled half the field."
       - "Flour gets into everything... my bread, my hair, even my dreams! (giggles)"
+      - "Now, was it three or four bags I had to deliver..."
     stats:
       hp: 53
     attackable: false
     role: general
 
-  barbarian:
-    name: Barbarian
-    description: A gruff looking man looking to pick a fight.
+  ruffian:
+    name: Ruffian
+    description: A gruff man looking to pick a fight.
     dialogue:
       - "What the hell do you want, runt?"
-      - "Leave me be, scrawny runt..."
+      - "Leave me be, whelp..."
     battle_dialogue:
       battle_start: "I'll crush you like a bug!"
-      player_victory: "Pfft.. I went easy on you..."
+      player_victory: "Pfft... I went easy on you..."
       npc_victory: "BWA-HA-HAA! Broken like a twig!"
     stats:
       hp: 90
@@ -329,6 +337,7 @@ npcs:
     description: A large bat hanging eerily from the cistern ceiling, wings folded tight.
     dialogue:
       - "...chk...chk-chk...chrrrk..."
+      - "..."
     battle_dialogue:
       battle_start: "Skree!"
       player_victory: "...skree..."
@@ -345,18 +354,19 @@ npcs:
 quests:
   a_loaf_for_the_needy:
     name: A loaf for the needy
-    description: George seems to need help with his daily chores.
+    description: George seems to need help with something.
     type: delivery
     requires: ""
     steps:
       - talk_to: george
-        dialogue: "Hey there! Be a champ and take this 🔑[Loaf of Bread] to Kassandra for me, would you? Thanks!"
+        dialogue: "Say, could ya take this 🔑[Loaf of Bread] to Kassandra for me? Baked fresh this mornin'."
         grants_key_items:
           - "key_item.loaf_of_bread"
       - talk_to: kassandra
-        dialogue: "What's this, a loaf of bread? So George thinks to woo me with crumbs... (looks into your eyes...) Ah, so you're the one... This found its way to me this morning but now it has found its true owner."
+        dialogue: "What's this, a loaf of bread? So George thinks to woo me with crumbs... (looks into your eyes a moment too long) Those eyes... fate does tease me so... Here, this found its way to me this morning but now I see it was meant for you."
         receives_key_items:
           - "key_item.loaf_of_bread"
+    reminder_dialogue: "I often see 'er passin' by."
     reward:
       key_item: "key_item.rusty_dagger"
 
@@ -369,12 +379,13 @@ quests:
       - talk_to: kassandra
         dialogue: "The well sings at night. They say she mourns those who fell into the dark below. I've always wondered who she really weeps for."
       - enter_area: old_well
-        message: You hear eerie sounds coming from deep inside the well...
+        message: 👂 You hear eerie sounds coming from deep inside the well...
       - battle: cave_bat
       - talk_to: "kassandra"
         dialogue: "Only a bat... Pity. I'd hoped for something more. (Kassandra hands you something) The pieces are coming together..."
+    reminder_dialogue: "My poor son... why did you have to listen so closely? (her gaze drifts east)"
     reward:
-      key_item: "key_item.small_gem" 
+      key_item: "key_item.small_gem"
       gold: 20
 
   a_lesson_in_manners:
@@ -384,12 +395,13 @@ quests:
     requires: ""
     steps:
       - talk_to: bertha
-        dialogue: "Some brute came through here the other day, kicked over half of my crates and laughed about it. Someone ought to teach him a lesson."
-      - battle: barbarian
+        dialogue: "Some brute came through here the other day, kicked over half of my crates and laughed about it. Someone ought to teach that lout some manners."
+      - battle: ruffian
       - talk_to: bertha
-        dialogue: "Oh, you taught that oaf a lesson? Can't thank you enough. Here, take this, and the next turnip's on me."
+        dialogue: "Oh, you taught that oaf a lesson? Can't thank you enough! Here, take this, and the next turnip's on me."
+    reminder_dialogue: "Some people, honestly..."
     reward:
-      gold: 10 
+      gold: 10
 
   arms_dealer:
     name: Arms Dealer

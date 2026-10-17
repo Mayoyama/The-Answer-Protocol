@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// CommandRouter owns the server connection and all connection state. Its run loop is the
+// only goroutine that reads server lines or changes this state; widgets are updated
+// through fyne.Do.
 type CommandRouter struct {
 	Win   fyne.Window
 	Login *LoginScreen
@@ -42,6 +45,8 @@ type CommandRouter struct {
 	battleLogHide        chan struct{}
 }
 
+// run handles login requests, server lines, commands, quit, the LOOK poll and the battle
+// timers until the program quits.
 func (cr *CommandRouter) run() {
 	for {
 		var pollChan <-chan time.Time
@@ -80,6 +85,8 @@ func (cr *CommandRouter) run() {
 	}
 }
 
+// handleServerResponse handles one server line: the greeting and login replies before
+// login, and every parsed reply type after it.
 func (cr *CommandRouter) handleServerResponse(response string) {
 	trimmedRes := strings.TrimSpace(response)
 
@@ -137,7 +144,7 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 			return
 		}
 
-		reply, err := ParseServerReply(response)
+		reply, err := parseServerReply(response)
 
 		if err != nil {
 			cr.Game.displayGameError(err.Error())
@@ -227,6 +234,8 @@ func (cr *CommandRouter) handleServerResponse(response string) {
 	}
 }
 
+// handleTapConnRequest sends a command from a button or the command entry, remembering
+// what later replies need (the empty-list command, QUIT, and the ATTACK and TALK targets).
 func (cr *CommandRouter) handleTapConnRequest(cmd string) {
 	if cr.tc == nil {
 		cr.Game.displayGameError("Not Connected")
@@ -259,6 +268,8 @@ func (cr *CommandRouter) handleTapConnRequest(cmd string) {
 	}
 }
 
+// resetServerState closes the connection and clears all session state and widgets, so the
+// next login starts empty.
 func (cr *CommandRouter) resetServerState() {
 	cr.setBattleMode(false)
 	cr.tc.shutdown()
@@ -304,6 +315,7 @@ func (cr *CommandRouter) resetServerState() {
 
 		cr.Game.BottomSection.NPCTargetIDs = nil
 		cr.Game.BottomSection.ChatPartyButton.Disable()
+		cr.Game.BottomSection.FleeButton.Disable()
 
 		oRS.InventoryList.ItemIDs = nil
 		oRS.InventoryList.List.Refresh()

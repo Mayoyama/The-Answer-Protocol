@@ -82,7 +82,8 @@ func (d ZoneMoveDirection) String() string {
 	}
 }
 
-// handleWho sends the player a JSON count of players in their room and on the server.
+// handleWho sends the player the names of the players in their room and the number of
+// players online.
 func handleWho(player *Player, loginState *LoginStatus, command string) {
 	pname := player.getPlayerName()
 
@@ -173,16 +174,19 @@ func handleLook(player *Player, loginState *LoginStatus) {
 	}
 
 	players := make([]string, 0)
+
 	for _, p := range area.InZone {
 		players = append(players, p.getPlayerName())
 	}
 
 	items := make([]string, 0)
+
 	for _, item := range area.Items {
 		items = append(items, item.ItemID)
 	}
 
 	spawns := make([]string, 0)
+
 	for _, npc := range area.NPCs {
 		spawns = append(spawns, npc.NPCID)
 	}
@@ -201,6 +205,7 @@ func handleLook(player *Player, loginState *LoginStatus) {
 	if err != nil {
 		_, _ = fmt.Fprintln(player.Conn, InternalErr.Error())
 		slog.Error(JSONErr.Error(), "err", err, "player", pname, "command", "LOOK")
+
 		return
 	}
 

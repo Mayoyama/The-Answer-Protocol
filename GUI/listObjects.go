@@ -5,6 +5,13 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// ItemList is a clickable list of item IDs, shown as labels.
+type ItemList struct {
+	ItemIDs []string
+	List    *widget.List
+}
+
+// buildItemList builds an ItemList whose rows send "cmd <item-id>" when clicked.
 func buildItemList(cmd string, tapConnRequests chan<- string) *ItemList {
 	iList := &ItemList{}
 

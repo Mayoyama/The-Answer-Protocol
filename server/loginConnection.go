@@ -24,6 +24,8 @@ const (
 	LoginClosed
 )
 
+// netConns holds every accepted connection, so shutdown can also close the ones that
+// never logged in; shuttingDown stops new connections from being added.
 var (
 	netConns     = make(map[net.Conn]struct{})
 	netConnsMu   sync.Mutex
@@ -79,6 +81,7 @@ func processConn(conn net.Conn, args string, player **Player) (LoginStatus, erro
 
 	if !ok {
 		startZoneErr := fmt.Errorf("%w: INVALID_START_ZONE %s", InternalErr, startingZone)
+
 		return LoginFailed, startZoneErr
 	}
 
@@ -86,6 +89,7 @@ func processConn(conn net.Conn, args string, player **Player) (LoginStatus, erro
 
 	if newP.MaxHP <= 0 || newP.CurrHP != newP.MaxHP {
 		hpErr := fmt.Errorf("%w: INVALID_HP_VALUE(S) %d/%d", InternalErr, newP.CurrHP, newP.MaxHP)
+
 		return LoginFailed, hpErr
 	}
 
@@ -231,6 +235,7 @@ func handleTCPConn(conn net.Conn) {
 		if err := conn.SetReadDeadline(time.Now().Add(idleTimeout)); err != nil {
 			slog.Warn("SET_READ_DEADLINE_ERROR", "err", err, "remote", conn.RemoteAddr().String())
 			deadlineFailed = true
+
 			break
 		}
 
@@ -286,9 +291,11 @@ func handleTCPConn(conn net.Conn) {
 	}
 
 	if deadlineFailed {
-		//pass - already logged
+		// pass - already logged
+
 	} else if err := scantask.Err(); err != nil {
 		var netErr net.Error
+
 		switch {
 		case errors.Is(err, net.ErrClosed):
 			slog.Info("CONNECTION_CLOSED_SAFELY", "remote", conn.RemoteAddr().String())

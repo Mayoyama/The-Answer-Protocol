@@ -74,7 +74,9 @@ func main() {
 		for i, e := range errs {
 			slog.Error(InternalErr.Error(), "number", i+1, "err", e)
 		}
+
 		os.Exit(1)
+
 	} else {
 		slog.Info("WORLD_DATA_VALIDATED")
 	}
@@ -82,6 +84,7 @@ func main() {
 	if err := validateMapConnectivity(); err != nil {
 		slog.Error(InternalErr.Error(), "err", err)
 		os.Exit(1)
+
 	} else {
 		slog.Info("MAP_CONNECTIVITY_VALIDATED")
 	}
@@ -89,6 +92,7 @@ func main() {
 	if ok := mapLoopExists(); !ok {
 		slog.Error(InternalErr.Error(), "err", "NO_MAP_LOOP_DETECTED")
 		os.Exit(1)
+
 	} else {
 		slog.Info("MAP_LOOP_VALIDATED")
 	}
@@ -164,16 +168,20 @@ func main() {
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				slog.Info("SERVER_SHUTTING_DOWN")
+
 				break
 			}
 
 			currRetries++
+
 			if currRetries >= maxRetries {
 				slog.Error(ConnFailedErr.Error(), "err", err)
+
 				break
 
 			} else {
 				slog.Warn(InboundConnErr.Error(), "err", err)
+
 				continue
 			}
 
@@ -192,6 +200,7 @@ func main() {
 			_, _ = fmt.Fprintln(conn, SoftbannedErr.Error())
 			slog.Warn(SoftbannedErr.Error(), "host", host, "remote", ipAddress, "until_when", untilWhen, "time_remaining", time.Until(untilWhen))
 			_ = conn.Close()
+
 			continue
 		}
 

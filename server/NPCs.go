@@ -51,6 +51,7 @@ type NPCStats struct {
 	Dexterity   int `yaml:"dex"`
 }
 
+// TalkReponse is the JSON payload of the TALK reply.
 type TalkReponse struct {
 	NPC      string `json:"npc,omitempty"`
 	Dialogue string `json:"dialogue"`
@@ -80,11 +81,17 @@ func resolveNPC(input string) (*NPC, bool) {
 // getDialogue advances a matching talk_to quest step (checking, granting and taking key items)
 // and returns its dialogue; otherwise it cycles the NPC's normal lines.
 func (n *NPC) getDialogue(player *Player) (*PlayerQuest, string, bool) {
+	var reminderLine string
+
 	player.PlayerMu.Lock()
 
-	for _, pq := range player.Quests {
+	for key, pq := range player.Quests {
 		if pq.Status != Active {
 			continue
+		}
+
+		if _, isQuestGiver := n.Quests[key]; isQuestGiver && pq.Quest.ReminderText != "" {
+			reminderLine = pq.Quest.ReminderText
 		}
 
 		step, ok := pq.Quest.Steps[pq.StepIndex].(*TalkToAction)
@@ -168,6 +175,12 @@ func (n *NPC) getDialogue(player *Player) (*PlayerQuest, string, bool) {
 		}
 	}
 
+	if reminderLine != "" {
+		player.PlayerMu.Unlock()
+
+		return nil, reminderLine, false
+	}
+
 	player.PlayerMu.Unlock()
 
 	n.NPCMu.Lock()
@@ -176,11 +189,10 @@ func (n *NPC) getDialogue(player *Player) (*PlayerQuest, string, bool) {
 	chats := len(n.Dialogue)
 
 	if chats == 0 {
-		return nil, "...", false //default dialogue if no dialogue is set
+		return nil, "...", false // default dialogue if no dialogue is set
 	}
 
 	option := n.ChatIndex % chats
-
 	n.ChatIndex++
 
 	return nil, n.Dialogue[option], false

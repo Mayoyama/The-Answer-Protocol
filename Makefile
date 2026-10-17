@@ -34,4 +34,4 @@ clean:
 	@$(MAKE) $(MAKE_FLAGS) CLI clean
 	@$(MAKE) $(MAKE_FLAGS) GUI clean
 
-.PHONY: install build-server build-CLI build-GUI run-server run-client run-client-gui lint clean
+.PHONY: install build-server build-CLI build-GUI run-server run-client run-rust-client run-client-gui lint clean

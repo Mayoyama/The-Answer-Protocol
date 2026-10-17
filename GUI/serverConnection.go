@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// Errors returned when a command can't be sent or QUIT gets no reply.
 var (
 	ConnClosedErr  = errors.New("sending error: server connection is closed")
 	BufferFullErr  = errors.New("sending error: command buffer exceeds limits")
@@ -72,11 +73,10 @@ func (tc *tapConnection) readServerLines() {
 		case <-tc.Done:
 			return
 		}
-
 	}
-
 }
 
+// writeToServer sends queued commands to the server until the connection fails or is shut down.
 func (tc *tapConnection) writeToServer() {
 	const commandTimeoutDuration = time.Second * 10
 
@@ -101,6 +101,8 @@ func (tc *tapConnection) writeToServer() {
 	}
 }
 
+// sendButtonCommandToServer queues cmd for sending without blocking. It fails if the
+// connection is closed or the queue is full.
 func (tc *tapConnection) sendButtonCommandToServer(cmd string) error {
 	select {
 	case tc.Outgoing <- cmd:
@@ -122,6 +124,7 @@ func (tc *tapConnection) shutdown() {
 	})
 }
 
+// handleQuit sends QUIT, shows the result on the current screen and closes the window.
 func (cr *CommandRouter) handleQuit() {
 	if cr.tc != nil {
 		var quitMsg string
@@ -153,7 +156,8 @@ func (cr *CommandRouter) handleQuit() {
 	})
 }
 
-// gracefulQuit sends QUIT to the server and waits briefly for a response before exiting.
+// gracefulQuit sends QUIT and waits up to timeout for "OK bye". It returns nil on
+// "OK bye", or the connection error or QuitTimeoutErr.
 func (tc *tapConnection) gracefulQuit(timeout time.Duration) error {
 	if err := tc.sendButtonCommandToServer("QUIT"); err != nil {
 		return err

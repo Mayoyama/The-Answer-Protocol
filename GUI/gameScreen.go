@@ -2,17 +2,17 @@ package main
 
 import (
 	"fmt"
-	"image/color"
-	"time"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"image/color"
+	"time"
 )
 
+// GameScreen holds the game window's content and its sections.
 type GameScreen struct {
 	GameScreen  *Screen
 	GameContent *fyne.Container
@@ -37,6 +37,7 @@ type GameScreen struct {
 	ErrTimer *time.Timer
 }
 
+// GSTopSection holds the top row: HP bar, room name, and the online and in-room counters.
 type GSTopSection struct {
 	HPBar         *widget.ProgressBar
 	ZoneNameLabel *canvas.Text
@@ -44,6 +45,7 @@ type GSTopSection struct {
 	InRoomLabel   *canvas.Text
 }
 
+// GSBottomSection holds the button section below the zone image.
 type GSBottomSection struct {
 	ChatGlobalButton *widget.Button
 	ChatRoomButton   *widget.Button
@@ -58,12 +60,11 @@ type GSBottomSection struct {
 	PartyLeaveButton  *widget.Button
 	PartyContent      *fyne.Container
 
-	TalkButton     *widget.Button
-	QuestButton    *widget.Button
-	AttackButton   *widget.Button
-	FleeButton     *widget.Button
-	MiddleContent  *fyne.Container
-	TargetsContent *fyne.Container
+	TalkButton    *widget.Button
+	QuestButton   *widget.Button
+	AttackButton  *widget.Button
+	FleeButton    *widget.Button
+	MiddleContent *fyne.Container
 
 	KeyItemButton       *widget.Button
 	InventoryButton     *widget.Button
@@ -73,12 +74,11 @@ type GSBottomSection struct {
 
 	ExamineButton *widget.Button
 	QuitButton    *widget.Button
-	RightContent  *fyne.Container
 
 	NPCTargetIDs []string
-	SelectedCmd  string
 }
 
+// RoomStatsWidget holds the labels of the room details panel.
 type RoomStatsWidget struct {
 	PlayersList *widget.Label
 	NPCsList    *widget.Label
@@ -87,10 +87,12 @@ type RoomStatsWidget struct {
 	RoomDesc    *widget.Label
 }
 
+// DPad holds the MOVE buttons, keyed by direction.
 type DPad struct {
 	DirButtonSet map[string]*widget.Button
 }
 
+// buildTopSection builds the top row and returns its widgets and its container.
 func buildTopSection() (*GSTopSection, *fyne.Container) {
 	gsTop := &GSTopSection{}
 
@@ -120,11 +122,8 @@ func buildTopSection() (*GSTopSection, *fyne.Container) {
 	return gsTop, topRowContent
 }
 
-// rust R: 168, G: 72, B: 30, A: 255
-// olive R: 107, G: 112, B: 40, A: 255
-// steelblue R: 54, G: 92, B: 140, A: 255
-// plum R: 110, G: 48, B: 90, A: 255
-
+// buildBottomSection builds the chat, GROUP, INTERACTIONS and QUERIES buttons, and the
+// EXAMINE, Show/Hide and Quit buttons, below the zone image.
 func (gs *GameScreen) buildBottomSection(tapConnRequests chan<- string, winCanvas fyne.Canvas) {
 	gs.BottomSection = &GSBottomSection{}
 
@@ -185,6 +184,8 @@ func (gs *GameScreen) buildBottomSection(tapConnRequests chan<- string, winCanva
 	gsBS.FleeButton.Disable()
 }
 
+// buildGameScreen builds the full game screen: the top row, the zone image with its
+// overlays, and the bottom section.
 func buildGameScreen(tapConnRequests chan<- string, winCanvas fyne.Canvas) *GameScreen {
 	gs := &GameScreen{}
 
@@ -227,6 +228,7 @@ func buildGameScreen(tapConnRequests chan<- string, winCanvas fyne.Canvas) *Game
 	return gs
 }
 
+// displayGameError shows errMsg in the error label and clears it after 3 seconds.
 func (gs *GameScreen) displayGameError(errMsg string) {
 	if gs.ErrTimer != nil {
 		gs.ErrTimer.Stop()

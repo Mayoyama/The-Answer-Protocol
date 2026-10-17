@@ -3,11 +3,21 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"unicode"
 )
 
 // chatDispatcher routes a CHAT command to the requested scope (GLOBAL, ROOM, or GROUP).
 func chatDispatcher(scope, message string, player *Player, loginState *LoginStatus) {
 	pname := player.getPlayerName()
+
+	for _, char := range message {
+		if unicode.IsControl(char) {
+			_, _ = fmt.Fprintln(player.Conn, InvalidArgsErr.Error())
+			slog.Warn(InvalidArgsErr.Error(), "player", pname, "command", "CHAT", "scope", scope, "reason", "escape character(s) in message", "message", message)
+
+			return
+		}
+	}
 
 	switch scope {
 	case "GLOBAL":

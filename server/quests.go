@@ -9,7 +9,7 @@ import (
 // QuestType categorizes a quest's objective (delivery, fetch, or battle).
 type QuestType int
 
-// QuestType values
+// QuestType values.
 const (
 	Delivery QuestType = iota
 	Fetch
@@ -19,7 +19,7 @@ const (
 // QuestStatus is a player's progress state for one accepted quest.
 type QuestStatus int
 
-// QuestStatus values
+// QuestStatus values.
 const (
 	Active QuestStatus = iota
 	Completed
@@ -27,13 +27,14 @@ const (
 
 // Quest represents an in-game quest.
 type Quest struct {
-	Name        string
-	QuestID     string
-	Description string
-	Type        QuestType
-	Steps       []QuestAction
-	Reward      *Reward
-	Requires    string // bare quest key of a prerequisite quest; "" if none
+	Name         string
+	QuestID      string
+	Description  string
+	Type         QuestType
+	Steps        []QuestAction
+	Reward       *Reward
+	Requires     string // bare quest key of a prerequisite quest; "" if none
+	ReminderText string
 }
 
 // Reward is a quest's payout: an optional key item and/or gold.

@@ -8,10 +8,15 @@ import (
 )
 
 const (
-	BattleIdleTimeout  time.Duration = time.Second * 10
+	// BattleIdleTimeout is how long without an ATTACK reply before the GUI leaves fight mode.
+	BattleIdleTimeout time.Duration = time.Second * 10
+	// BattleLogHideDelay is how long the battle log stays visible after a fight ends.
 	BattleLogHideDelay time.Duration = time.Second * 5
 )
 
+// setBattleMode turns fight mode on or off. Turning it on opens the battle log, adds a
+// start divider when the opponent changed and enables FLEE; turning it off starts the
+// battle log hide timer.
 func (cr *CommandRouter) setBattleMode(on bool) {
 	if on == cr.InBattle {
 		return
@@ -60,6 +65,8 @@ func (cr *CommandRouter) setBattleMode(on bool) {
 	}
 }
 
+// restartBattleTimer records the time of the latest ATTACK reply and restarts the idle
+// timer, which signals battleScreenTimeout after BattleIdleTimeout.
 func (cr *CommandRouter) restartBattleTimer() {
 	cr.LastAttack = time.Now()
 
@@ -77,6 +84,7 @@ func (cr *CommandRouter) restartBattleTimer() {
 	})
 }
 
+// handleBattleScreenTimeout leaves fight mode if no ATTACK reply arrived within BattleIdleTimeout.
 func (cr *CommandRouter) handleBattleScreenTimeout() {
 	if time.Since(cr.LastAttack) < BattleIdleTimeout {
 		return
@@ -85,6 +93,7 @@ func (cr *CommandRouter) handleBattleScreenTimeout() {
 	cr.setBattleMode(false)
 }
 
+// startBattleLogHideTimer restarts the timer that signals battleLogHide after BattleLogHideDelay.
 func (cr *CommandRouter) startBattleLogHideTimer() {
 	if cr.BattleLogHideTimer != nil {
 		cr.BattleLogHideTimer.Stop()
@@ -100,6 +109,8 @@ func (cr *CommandRouter) startBattleLogHideTimer() {
 	})
 }
 
+// handleBattle writes one ATTACK round to the battle log, updates the HP bar and ends
+// the fight when either side reaches 0 HP.
 func (cr *CommandRouter) handleBattle(reply ReplyContent) {
 	atk := reply.Attack
 
@@ -119,6 +130,7 @@ func (cr *CommandRouter) handleBattle(reply ReplyContent) {
 	}
 }
 
+// handleBattleLogHide hides the battle log unless a new fight has started.
 func (cr *CommandRouter) handleBattleLogHide() {
 	if cr.InBattle {
 		return
@@ -132,6 +144,8 @@ func (cr *CommandRouter) handleBattleLogHide() {
 	})
 }
 
+// buildAttackRoundString formats one ATTACK reply as an initiative line followed by the
+// hits and dodges in initiative order.
 func (cr *CommandRouter) buildAttackRoundString(data AttackParse) string {
 	var (
 		battleString string
@@ -202,6 +216,7 @@ func (cr *CommandRouter) buildAttackRoundString(data AttackParse) string {
 	return fmt.Sprintf("%s\n%s", initString, battleString)
 }
 
+// logFlee adds the flee line to the battle log when the reply came from FLEE.
 func (cr *CommandRouter) logFlee(reply ReplyContent) {
 	if reply.BattleFled {
 		fyne.Do(func() {
@@ -210,6 +225,8 @@ func (cr *CommandRouter) logFlee(reply ReplyContent) {
 	}
 }
 
+// endBattleMode closes an open fight (end divider, FLEE disabled, battle log kept visible
+// for BattleLogHideDelay) and leaves fight mode.
 func (cr *CommandRouter) endBattleMode() {
 	if cr.FightOpen {
 		cr.FightOpen = false

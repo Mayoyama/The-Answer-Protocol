@@ -7,11 +7,13 @@ import (
 	"slices"
 )
 
+// ChatWindow is a scrolling text window that keeps the last 250 lines.
 type ChatWindow struct {
 	TextWin *widget.RichText
 	Scroll  *container.Scroll
 }
 
+// buildChatWindow creates a ChatWindow with the given minimum size.
 func buildChatWindow(w, h float32) *ChatWindow {
 	cw := &ChatWindow{}
 
@@ -24,6 +26,8 @@ func buildChatWindow(w, h float32) *ChatWindow {
 	return cw
 }
 
+// addLine appends a line, drops the oldest lines over the cap, and scrolls to the new
+// line only if the window was already at the bottom.
 func (cw *ChatWindow) addLine(line string) {
 	atCWBottom := cw.notScrolledUp()
 
@@ -38,6 +42,7 @@ func (cw *ChatWindow) addLine(line string) {
 	}
 }
 
+// notScrolledUp reports whether the window is at, or within a few pixels of, the bottom.
 func (cw *ChatWindow) notScrolledUp() bool {
 	const tolerance float32 = 4
 
@@ -48,10 +53,12 @@ func (cw *ChatWindow) notScrolledUp() bool {
 	return false
 }
 
+// appendSegment adds line as a new paragraph segment.
 func (cw *ChatWindow) appendSegment(line string) {
 	cw.TextWin.Segments = append(cw.TextWin.Segments, &widget.TextSegment{Text: line, Style: widget.RichTextStyleParagraph})
 }
 
+// dropOldLines removes the oldest lines beyond the history cap.
 func (cw *ChatWindow) dropOldLines() {
 	const chatHistoryMessageCap int = 250
 

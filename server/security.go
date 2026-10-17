@@ -48,6 +48,7 @@ func (p *Player) handleTimeoutBucket(timestamp time.Time) bool {
 
 	if p.TokenCount >= 1 {
 		p.TokenCount -= 1
+
 		return true
 	}
 
@@ -57,6 +58,8 @@ func (p *Player) handleTimeoutBucket(timestamp time.Time) bool {
 	return false
 }
 
+// handleQueryBucket applies the query bucket (LOOK, WHO, STATUS, GOLD) and reports whether
+// a token was available. About 20 rejections within 10 seconds start the 1-minute timeout.
 func (p *Player) handleQueryBucket(timestamp time.Time) bool {
 	const queryRefill = 0.9
 	const queryMaxCapacity = 10
@@ -71,12 +74,14 @@ func (p *Player) handleQueryBucket(timestamp time.Time) bool {
 
 	if p.QueryCount >= 1 {
 		p.QueryCount -= 1
+
 		return true
 	}
 
 	if timestamp.After(p.RejectionTS.Add(time.Second * 10)) {
 		p.RejectionTS = time.Now()
 		p.RejectionCount = 1
+
 	} else {
 		p.RejectionCount++
 	}

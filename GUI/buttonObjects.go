@@ -5,11 +5,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-type ItemList struct {
-	ItemIDs []string
-	List    *widget.List
-}
-
+// createDirButtonSet builds the six MOVE buttons, keyed by direction.
 func createDirButtonSet(requests chan<- string) map[string]*widget.Button {
 	newSet := make(map[string]*widget.Button)
 	dirSet := []string{"north", "south", "east", "west", "up", "down"}
@@ -22,6 +18,7 @@ func createDirButtonSet(requests chan<- string) map[string]*widget.Button {
 	return newSet
 }
 
+// createDirectionButton builds one MOVE button, labelled with the direction's letter or arrow.
 func createDirectionButton(direction string, requests chan<- string) *widget.Button {
 	var dirString string
 
@@ -52,9 +49,10 @@ func createDirectionButton(direction string, requests chan<- string) *widget.But
 	return dirButton
 }
 
+// createStatusGoldButton builds the STATUS button: it toggles the status/gold panel and
+// sends STATUS and GOLD when opening it.
 func (oTS *OverlayTopSection) createStatusGoldButton(tapConnRequests chan<- string) *widget.Button {
 	newButton := widget.NewButton("STATUS", func() {
-
 		if oTS.StatsGoldStack.Visible() {
 			oTS.StatsGoldStack.Hide()
 
@@ -76,6 +74,8 @@ func (oTS *OverlayTopSection) createStatusGoldButton(tapConnRequests chan<- stri
 	return newButton
 }
 
+// createRoomDetailsButton builds the LOOK button: it toggles the room details panel and
+// sends LOOK when opening it.
 func (oTS *OverlayTopSection) createRoomDetailsButton(tapConnRequests chan<- string) *widget.Button {
 	newButton := widget.NewButton("LOOK", func() {
 		if oTS.ZoneLookContent.Visible() {
@@ -97,6 +97,7 @@ func (oTS *OverlayTopSection) createRoomDetailsButton(tapConnRequests chan<- str
 	return newButton
 }
 
+// createBattleLogButton builds the Battle Log button, which toggles the battle log panel.
 func (oTS *OverlayTopSection) createBattleLogButton() *widget.Button {
 	newButton := widget.NewButton("Battle Log", func() {
 		if oTS.BattleLogContent.Visible() {
@@ -114,6 +115,7 @@ func (oTS *OverlayTopSection) createBattleLogButton() *widget.Button {
 	return newButton
 }
 
+// createStatusButton builds a button that sends cmd to the server when pressed.
 func createStatusButton(label, cmd string, tapConnRequests chan<- string) *widget.Button {
 	newButton := widget.NewButton(label, func() {
 		select {
@@ -125,6 +127,7 @@ func createStatusButton(label, cmd string, tapConnRequests chan<- string) *widge
 	return newButton
 }
 
+// createCmdPrefillButton builds a button that fills the command entry with prefillText.
 func createCmdPrefillButton(label, prefillText string, textEntryWidget *widget.Entry, textCanvas fyne.Canvas) *widget.Button {
 	newButton := widget.NewButton(label, func() {
 		prefillEntry(prefillText, textEntryWidget, textCanvas)
@@ -133,6 +136,8 @@ func createCmdPrefillButton(label, prefillText string, textEntryWidget *widget.E
 	return newButton
 }
 
+// prefillEntry fills the command entry with prefillText, moves the cursor to the end and
+// focuses the entry.
 func prefillEntry(prefillText string, textEntryWidget *widget.Entry, textCanvas fyne.Canvas) {
 	textEntryWidget.SetText(prefillText)
 	textEntryWidget.CursorColumn = len(prefillText)
@@ -140,6 +145,8 @@ func prefillEntry(prefillText string, textEntryWidget *widget.Entry, textCanvas 
 	textCanvas.Focus(textEntryWidget)
 }
 
+// createShowHideButton builds the button that hides and shows the overlay layers. Each
+// element inside them keeps its own visibility.
 func createShowHideButton(overlayWidgets []fyne.CanvasObject) *widget.Button {
 	uiHidden := false
 
@@ -169,6 +176,8 @@ func createShowHideButton(overlayWidgets []fyne.CanvasObject) *widget.Button {
 	return newButton
 }
 
+// createPopUpMenuButton builds a button that opens a menu of the IDs in menuListContent
+// (read when clicked); picking one sends "cmd <id>".
 func createPopUpMenuButton(label, cmd string, menuListContent *[]string, tapConnRequests chan<- string, winCanvas fyne.Canvas) *widget.Button {
 	var newButton *widget.Button
 
@@ -198,6 +207,8 @@ func createPopUpMenuButton(label, cmd string, menuListContent *[]string, tapConn
 	return newButton
 }
 
+// createExaminePopUpButton builds the EXAMINE button. Its menu fills the command entry
+// with EXAMINE NPC, ITEM or KEYITEM; it sends nothing to the server itself.
 func createExaminePopUpButton(textEntryWidget *widget.Entry, textCanvas fyne.Canvas) *widget.Button {
 	var newButton *widget.Button
 
@@ -216,7 +227,7 @@ func createExaminePopUpButton(textEntryWidget *widget.Entry, textCanvas fyne.Can
 
 		menu := fyne.NewMenu("", npcItem, itemItem, kiItem)
 		popUp := widget.NewPopUpMenu(menu, textCanvas)
-		above := fyne.NewPos(0, -popUp.Size().Height)
+		above := fyne.NewPos(0, -popUp.MinSize().Height)
 		popUp.ShowAtRelativePosition(above, newButton)
 	})
 

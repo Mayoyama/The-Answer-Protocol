@@ -1,12 +1,13 @@
 package main
 
 import (
-	//"encoding/json"
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 )
 
+// Window and layout sizes: the login window, the zone image (640 × 360 art shown at 2×),
+// and the extra height for the rows above and below it.
 const (
 	login_win_w       float32 = 400
 	login_win_h       float32 = 200
@@ -15,6 +16,7 @@ const (
 	element_padding_h float32 = 180
 )
 
+// main builds the window and screens, starts the command router and runs the GUI.
 func main() {
 	guiApp := app.New()
 	win := guiApp.NewWindow("The Answer Protocol")

@@ -5,7 +5,8 @@ import (
 	"fmt"
 )
 
-// examineDispatcher handles EXAMINE <NPC|ITEM|KEYITEM> <name>, replying with the target's name and description.
+// examineDispatcher handles EXAMINE <NPC|ITEM|KEYITEM> <name>, replying with the target's
+// name and description, plus the role for an NPC or whether an item is obtainable.
 func examineDispatcher(scope, target string, player *Player) (string, error) {
 	var exResponse ExamineResponse
 	currLoc := player.getZoneID()

@@ -2,17 +2,18 @@ package main
 
 import (
 	"fmt"
-	"image/color"
-	"strings"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"image/color"
+	"strings"
 )
 
+// OverlayTopSection holds the overlays at the top of the zone image: the status/gold
+// panel, the LOOK and Battle Log buttons, the room details panel and the battle log.
 type OverlayTopSection struct {
 	StatusButton      *widget.Button
 	RoomDetailsButton *widget.Button
@@ -26,27 +27,29 @@ type OverlayTopSection struct {
 	RoomStatsInfo   *RoomStatsWidget
 	ZoneLookContent *fyne.Container
 
-	DPad *DPad
-
 	BattleLog        *ChatWindow
 	BattleLogContent *fyne.Container
 	BattleSwapStack  *fyne.Container
 }
 
+// OverlayRightSection holds the d-pad and the DROP and TAKE lists.
 type OverlayRightSection struct {
 	DPad          *DPad
 	InventoryList *ItemList
 	TakeList      *ItemList
 }
 
+// OverlayBottomSection holds the chat and log windows and the command entry.
 type OverlayBottomSection struct {
 	ChatWindow *ChatWindow
 	LogWindow  *ChatWindow
 	TextEntry  *widget.Entry
 }
 
+// WindowRectAlpha is the opacity of the dark backings behind the overlay panels.
 const WindowRectAlpha uint8 = 135
 
+// buildTopOverlay builds the top overlays; the status/gold panel and the battle log start hidden.
 func buildTopOverlay(tapConnRequests chan<- string) *OverlayTopSection {
 	const (
 		battleLogWidth  float32 = 760
@@ -140,6 +143,7 @@ func buildTopOverlay(tapConnRequests chan<- string) *OverlayTopSection {
 	return oTS
 }
 
+// buildRightOverlay builds the d-pad and the DROP and TAKE lists.
 func buildRightOverlay(tapConnRequests chan<- string) (*OverlayRightSection, *fyne.Container) {
 	oRS := &OverlayRightSection{}
 	oRS.DPad = &DPad{}
@@ -155,12 +159,12 @@ func buildRightOverlay(tapConnRequests chan<- string) (*OverlayRightSection, *fy
 
 	dPadRow := container.NewHBox(layout.NewSpacer(), dPad)
 
-	InvTitle := widget.NewLabel("DROP")
-	InvTitle.Alignment = fyne.TextAlignCenter
+	invTitle := widget.NewLabel("DROP")
+	invTitle.Alignment = fyne.TextAlignCenter
 	oRS.InventoryList = buildItemList("DROP", tapConnRequests)
 	invRowHeight := widget.NewLabel("").MinSize().Height
 	invContent := container.NewGridWrap(fyne.NewSize(190, invRowHeight*4), oRS.InventoryList.List)
-	invBox := container.NewBorder(InvTitle, nil, nil, nil, invContent)
+	invBox := container.NewBorder(invTitle, nil, nil, nil, invContent)
 
 	takeItemsTitle := widget.NewLabel("TAKE")
 	takeItemsTitle.Alignment = fyne.TextAlignCenter
@@ -180,6 +184,8 @@ func buildRightOverlay(tapConnRequests chan<- string) (*OverlayRightSection, *fy
 	return oRS, rightSideContent
 }
 
+// buildBottomOverlay builds the chat and log windows and the command entry. A typed CHAT
+// command also adds the player's own line to the chat window.
 func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *fyne.Container) {
 	oBS := &OverlayBottomSection{}
 
@@ -203,17 +209,17 @@ func buildBottomOverlay(tapConnRequests chan<- string) (*OverlayBottomSection, *
 		case tapConnRequests <- cmd:
 			if len(cmdParts) > 2 && cmdUpper == "CHAT" {
 				scope := Capitalize(cmdParts[1])
+
 				if scope == "Room" || scope == "Global" || scope == "Group" {
 					toChatWin := fmt.Sprintf("💬 %s (YOU) << %s", scope, cmdParts[2])
 					oBS.ChatWindow.addLine(toChatWin)
 				}
-
 			}
 		default:
-			// TODO: show "buffer full" on GameErr (the section does not have gs; decide how to reach it)
+			oBS.LogWindow.addLine("🔺 Command buffer full, try again")
 		}
 
-		oBS.TextEntry.SetText((""))
+		oBS.TextEntry.SetText("")
 	}
 
 	chatWinBacking := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: WindowRectAlpha})

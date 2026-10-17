@@ -13,13 +13,13 @@ import (
 	"strings"
 )
 
-// Screen holds the widgets of the game screen that other code needs to reach.
+// Screen holds the zone background: the image stack and the image widget inside it.
 type Screen struct {
 	zoneStack *fyne.Container
 	zoneImage *canvas.Image
 }
 
-// zoneList holds the bare zone keys from world.yaml, one per embedded image
+// zoneList holds the bare zone keys from world.yaml, one per embedded image.
 var zoneList = []string{
 	"taverne",
 	"fountain_square",
@@ -60,6 +60,7 @@ func loadZoneImages() []error {
 		img  image.Image
 		errs []error
 	)
+
 	for _, z := range zoneList {
 		path := fmt.Sprintf("assets/%s.png", z)
 		imgFile, err := embeddedFiles.ReadFile(path)
@@ -83,6 +84,8 @@ func loadZoneImages() []error {
 	return errs
 }
 
+// buildNewZoneImage builds the zone background: a plain colour with the zone image on top,
+// both sized w × h. The image starts hidden.
 func buildNewZoneImage(w, h float32) *Screen {
 	backgroundRect := canvas.NewRectangle(color.RGBA{R: 40, G: 40, B: 50, A: 255})
 	backgroundRect.SetMinSize(fyne.NewSize(w, h))
@@ -103,13 +106,14 @@ func buildNewZoneImage(w, h float32) *Screen {
 	return newScreen
 }
 
+// showZoneImage shows the background image for zoneID, or hides it (leaving the plain
+// colour) if the zone has no image.
 func (s *Screen) showZoneImage(zoneID string) {
 	key := strings.TrimPrefix(zoneID, "zone.")
 
 	img, ok := zoneImages[key]
 
 	fyne.Do(func() {
-
 		if ok {
 			s.zoneImage.Image = img
 			s.zoneImage.Refresh()

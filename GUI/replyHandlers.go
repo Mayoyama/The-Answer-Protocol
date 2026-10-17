@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+// resolveEmptyList writes the "None" line for an empty list reply, matched to the last
+// INVENTORY, KEYITEMS or QUESTS command sent.
 func (cr *CommandRouter) resolveEmptyList() {
 	var emptyLine string
 
@@ -35,6 +37,7 @@ func (cr *CommandRouter) resolveEmptyList() {
 	})
 }
 
+// handleChat writes a chat event to the chat window, labelling NPC senders and fight starts.
 func (cr *CommandRouter) handleChat(reply ReplyContent) {
 	var (
 		sender      string
@@ -50,7 +53,6 @@ func (cr *CommandRouter) handleChat(reply ReplyContent) {
 
 	} else {
 		sender = fmt.Sprintf("(%s)", reply.Chat.Sender)
-
 	}
 
 	if startBattle && strings.Contains(reply.Chat.Message, "commenced a new battle") {
@@ -65,6 +67,7 @@ func (cr *CommandRouter) handleChat(reply ReplyContent) {
 	})
 }
 
+// handleExamine writes an EXAMINE reply to the log.
 func (cr *CommandRouter) handleExamine(reply ReplyContent) {
 	examineString := fmt.Sprintf("🔍 Name: %s\nDescription: %s", reply.Examine.Name, reply.Examine.Description)
 
@@ -81,6 +84,7 @@ func (cr *CommandRouter) handleExamine(reply ReplyContent) {
 	})
 }
 
+// handleGold updates the gold label.
 func (cr *CommandRouter) handleGold(reply ReplyContent) {
 	goldString := fmt.Sprintf("Gold: %d", reply.Gold)
 
@@ -90,6 +94,8 @@ func (cr *CommandRouter) handleGold(reply ReplyContent) {
 	})
 }
 
+// handleGroup logs group replies and events, and tracks whether the player is in a group
+// (the In Party label and the party chat button).
 func (cr *CommandRouter) handleGroup(reply ReplyContent) {
 	var groupString string
 
@@ -138,6 +144,7 @@ func (cr *CommandRouter) handleGroup(reply ReplyContent) {
 	})
 }
 
+// handleInventory replaces the DROP list, and logs the inventory if the player asked for it.
 func (cr *CommandRouter) handleInventory(reply ReplyContent) {
 	var (
 		items    []string
@@ -175,8 +182,13 @@ func (cr *CommandRouter) handleInventory(reply ReplyContent) {
 	})
 }
 
+// handleKeyItems logs the player's key items.
 func (cr *CommandRouter) handleKeyItems(reply ReplyContent) {
 	var keyItems []string
+
+	if strings.EqualFold(cr.QueryWaitingForReply, "keyitems") {
+		cr.QueryWaitingForReply = ""
+	}
 
 	for _, id := range reply.KeyItems {
 		keyItems = append(keyItems, IDToLabel(id))
@@ -195,6 +207,8 @@ func (cr *CommandRouter) handleKeyItems(reply ReplyContent) {
 	})
 }
 
+// handleLook updates the room name, the counters, the room details, the TAKE list, the NPC
+// menus and the d-pad, and the zone image when the room changed.
 func (cr *CommandRouter) handleLook(reply ReplyContent) {
 	var (
 		roomExits  []string
@@ -207,7 +221,7 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 		roomExits = append(roomExits, exit)
 	}
 
-	inRoomString := fmt.Sprintf("🏠 Room: %d", len(reply.Look.Players))
+	inRoomString := fmt.Sprintf("🏠 Room: %d ", len(reply.Look.Players))
 
 	cr.InZoneCount = len(reply.Look.Players)
 
@@ -269,6 +283,7 @@ func (cr *CommandRouter) handleLook(reply ReplyContent) {
 	}
 }
 
+// handleMove changes the zone image after a move and requests LOOK.
 func (cr *CommandRouter) handleMove(reply ReplyContent) {
 	cr.CurrentZone = reply.RoomID
 
@@ -279,6 +294,8 @@ func (cr *CommandRouter) handleMove(reply ReplyContent) {
 	}
 }
 
+// handleNPCDialogue writes NPC dialogue to the chat window, and requests STATUS after a
+// healer's heal line.
 func (cr *CommandRouter) handleNPCDialogue(reply ReplyContent) {
 	var npcName string
 
@@ -312,6 +329,7 @@ func (cr *CommandRouter) handleNPCDialogue(reply ReplyContent) {
 	}
 }
 
+// handlePresence logs a player entering or leaving the room and adjusts the in-room counter.
 func (cr *CommandRouter) handlePresence(reply ReplyContent) {
 	var actionLine string
 
@@ -331,14 +349,14 @@ func (cr *CommandRouter) handlePresence(reply ReplyContent) {
 		cr.Game.TopSection.InRoomLabel.Text = inZoneText
 		cr.Game.TopSection.InRoomLabel.Refresh()
 	})
-
 }
 
+// handleQuest logs an accepted quest with its rewards.
 func (cr *CommandRouter) handleQuest(reply ReplyContent) {
 	rewards := "Rewards: "
 
 	if reply.Quest.Reward.Gold != 0 && reply.Quest.Reward.KeyItem != "" {
-		rewards += fmt.Sprintf("Gold: -> %d; Key Item -> %s", reply.Quest.Reward.Gold, IDToLabel(reply.Quest.Reward.KeyItem))
+		rewards += fmt.Sprintf("Gold -> %d; Key Item -> %s", reply.Quest.Reward.Gold, IDToLabel(reply.Quest.Reward.KeyItem))
 
 	} else if reply.Quest.Reward.Gold != 0 {
 		rewards += fmt.Sprintf("Gold -> %d", reply.Quest.Reward.Gold)
@@ -357,8 +375,13 @@ func (cr *CommandRouter) handleQuest(reply ReplyContent) {
 	})
 }
 
+// handleQuests logs the player's quest list.
 func (cr *CommandRouter) handleQuests(reply ReplyContent) {
 	var questList []string
+
+	if strings.EqualFold(cr.QueryWaitingForReply, "quests") {
+		cr.QueryWaitingForReply = ""
+	}
 
 	for _, q := range reply.Quests {
 		questList = append(questList, buildQuestLine(q))
@@ -371,6 +394,7 @@ func (cr *CommandRouter) handleQuests(reply ReplyContent) {
 	})
 }
 
+// handleReplyError shows a server error in the error label and the log.
 func (cr *CommandRouter) handleReplyError(reply ReplyContent) {
 	cr.Game.displayGameError(reply.Err.Text)
 	cr.Quitting = false
@@ -382,6 +406,7 @@ func (cr *CommandRouter) handleReplyError(reply ReplyContent) {
 	})
 }
 
+// handleRespawn logs the defeat and respawn, and requests LOOK and STATUS.
 func (cr *CommandRouter) handleRespawn(reply ReplyContent) {
 	var enemyName string
 
@@ -407,6 +432,7 @@ func (cr *CommandRouter) handleRespawn(reply ReplyContent) {
 	})
 }
 
+// handleRewards logs quest rewards, and requests GOLD after a gold reward to the player.
 func (cr *CommandRouter) handleRewards(reply ReplyContent) {
 	var (
 		goldLine string
@@ -438,6 +464,7 @@ func (cr *CommandRouter) handleRewards(reply ReplyContent) {
 	}
 }
 
+// handleServerCount updates the online counter from EVT STATS.
 func (cr *CommandRouter) handleServerCount(reply ReplyContent) {
 	onlineCount := fmt.Sprintf("🌐 Online: %d ", reply.ServerCount)
 
@@ -447,6 +474,7 @@ func (cr *CommandRouter) handleServerCount(reply ReplyContent) {
 	})
 }
 
+// handleStatus updates the HP bar and the status label.
 func (cr *CommandRouter) handleStatus(reply ReplyContent) {
 	hp := reply.Status.HP
 	maxHP := reply.Status.MaxHP
@@ -464,6 +492,7 @@ func (cr *CommandRouter) handleStatus(reply ReplyContent) {
 	})
 }
 
+// handleTakeDrop logs a take or drop, updates the DROP list and requests LOOK.
 func (cr *CommandRouter) handleTakeDrop(reply ReplyContent) {
 	var actionLine string
 
@@ -502,6 +531,7 @@ func (cr *CommandRouter) handleTakeDrop(reply ReplyContent) {
 	}
 }
 
+// handleWho logs the WHO reply and updates the online counter.
 func (cr *CommandRouter) handleWho(reply ReplyContent) {
 	whoString := fmt.Sprintf("👤 In zone: %v. Online Count: %d.", reply.Who.Room, reply.Who.Server)
 	onlineCount := fmt.Sprintf("🌐 Online: %d ", reply.Who.Server)
@@ -510,6 +540,5 @@ func (cr *CommandRouter) handleWho(reply ReplyContent) {
 		cr.Game.TopSection.OnlineLabel.Text = onlineCount
 		cr.Game.TopSection.OnlineLabel.Refresh()
 		cr.Game.OverlayBottomSection.LogWindow.addLine(whoString)
-
 	})
 }

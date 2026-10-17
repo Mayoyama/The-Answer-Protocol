@@ -67,7 +67,6 @@ func mapLooper(currentZone string, onPath, fullyExplored *[]string) bool {
 
 		*fullyExplored = append(*fullyExplored, z)
 		*onPath = slices.DeleteFunc(*onPath, func(s string) bool { return s == z })
-
 	}
 
 	return false
@@ -391,6 +390,7 @@ func ValidateWorldData() []error {
 					}
 				}
 			}
+
 			if len(sameQuestKeyItems) > 0 {
 				errs = append(errs, fmt.Errorf("VALIDATION_ERROR: QUEST_KEY_ITEMS_NOT_BALANCED %v, QUEST: %s", sameQuestKeyItems, quest.Name))
 			}
@@ -411,6 +411,7 @@ func ValidateWorldData() []error {
 		}
 
 		iname := strings.ToLower(ki.ItemName)
+
 		if slices.Contains(ItemKIComparisonList, iname) {
 			errs = append(errs, fmt.Errorf("VALIDATION_ERROR: DUPLICATE_ITEM_NAME %s", iname))
 
@@ -420,21 +421,25 @@ func ValidateWorldData() []error {
 	}
 
 	itemLen := len(items)
+
 	if itemLen < 4 {
 		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INSUFFICIENT_ITEM_COUNT %d/4", itemLen))
 	}
 
 	obtainableItemsLen := len(obtainableItems)
+
 	if obtainableItemsLen < 2 {
 		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INSUFFICIENT_OBTAINABLE_ITEM_COUNT %d/2", obtainableItemsLen))
 	}
 
 	roleListLen := len(roleList)
+
 	if roleListLen < 3 {
 		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INSUFFICIENT_NPC_ROLE_COUNT %d/3", roleListLen))
 	}
 
 	questLen := len(questList)
+
 	if questLen < 2 {
 		errs = append(errs, fmt.Errorf("VALIDATION_ERROR: INSUFFICIENT_QUEST_COUNT %d/2", questLen))
 	}

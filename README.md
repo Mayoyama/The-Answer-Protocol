@@ -23,21 +23,25 @@
 
 ## Description
 
-TAP (The Answer Protocol) is a shared-world, TCP-based text adventure. A Go server hosts a persistent world (rooms, items, NPCs) that multiple clients connect to over a line-based text protocol (RFC 42TAP), with real-time chat, movement, groups and item interaction, plus turn-based combat, chained quests with key items, and a healer NPC.
+TAP (The Answer Protocol) is a shared-world, TCP-based text adventure, built as a core project in the 42 curriculum. A Go server hosts a persistent world (rooms, items, NPCs) that multiple clients connect to over a line-based text protocol (RFC 42TAP), with real-time chat, movement, groups and item interaction, plus turn-based combat, chained quests with key items, and a healer NPC.
 
-The project follows a 42 school assignment (referred to below as "the subject"). The subject comes with a protocol specification, **RFC 42TAP**, which defines the commands, replies, events and error codes. It requires implementations to follow the RFC strictly, to document any deviation, and to keep clients interchangeable between different groups' servers. Where this README mentions a subject section (e.g. V.4), it refers to the assignment's own chapters.
+The project is normally completed by a group of 2–3 learners; however, as no partners were available, I built the entire game alone: the server, both CLI clients (Go and Rust), the GUI client, the battle and quest systems, the world and its story (see [Group Contributions](#group-contributions)).
 
-The repository contains the **server**, a **CLI client** (Go and Rust versions) and a **GUI client** (Go with Fyne, in progress; design in [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md)). An example session is shown under [CLI Client](#cli-client).
+The 42 assignment (referred to below as "the subject") comes with a protocol specification, **[RFC 42TAP](Resources/protocol-rfc.html)**, which defines the commands, replies, events and error codes. It requires implementations to follow the RFC strictly, to document any deviation, and to keep clients interchangeable between different groups' servers. Where this README mentions a subject section (e.g. V.4), it refers to the assignment's own chapters.
+
+The repository contains the **server**, two **CLI clients** (Go and Rust) and a **GUI client** (Go with Fyne; design in the [GUI Functional Specification Document](FSD-GUI.md)). An example session is shown under [CLI Client](#cli-client).
+
+A short [Player's Manual](Resources/TAP_Players_Manual.pdf), which covers player controls, GUI elements and basic CLI commands, can be found in `Resources/`.
 
 [↑ Back to top](#top)
 
 ## Instructions
 
-Requirements: Go, Rust/Cargo for the Rust CLI, and a C compiler for the GUI client (Fyne uses cgo); details under [Building and Running](#building-and-running). From the repository root:
+Requirements: Go, Rust/Cargo for the Rust CLI (optional if using the Go CLI only), and a C compiler for the GUI client (Fyne uses cgo); details under [Building and Running](#building-and-running). From the repository root:
 
 1. `make install` downloads the dependencies and builds the server, both CLI clients and the GUI client.
 2. `make run-server` starts the server on TCP port 4242.
-3. In another terminal, start a client: `make run-client` (Rust CLI), `make run-go-client` (Go CLI) or `make run-client-gui` (GUI).
+3. In another terminal, start a client: `make run-client` (Go CLI), `make run-rust-client` (Rust CLI) or `make run-client-gui` (GUI).
 
 `make lint` and `make clean` cover all components.
 
@@ -48,7 +52,7 @@ Requirements: Go, Rust/Cargo for the Rust CLI, and a C compiler for the GUI clie
 ### Dispatcher-based design
 
 - `handleLogin` handles the pre-authentication state (`CONNECT`/`QUIT` only, with its own token-bucket spam guard).
-- After login, `commandDispatch` routes every in-game command. `CHAT` and `GROUP` have their own sub-dispatchers (`chatDispatcher`, `groupFuncDispatcher`) for scopes and subcommands.
+- After login, `commandDispatch` routes every in-game command. `CHAT`, `GROUP` and `EXAMINE` have their own sub-dispatchers (`chatDispatcher`, `groupFuncDispatcher`, `examineDispatcher`) for their scopes and subcommands.
 
 ### Concurrency model
 
@@ -70,7 +74,7 @@ Implemented in `security.go`, covering the resource limits recommended in RFC §
 
 ## CLI Client
 
-Two versions in `CLI/` behave the same way: Rust (`src/main.rs`, `make run-client`) and Go (`cli.go`, `make run-go-client`). Both connect to `localhost:4242`, ask for a username and send `CONNECT <username>`, and keep printing server events while waiting for input.
+Two versions in `CLI/` behave the same way: Go (`cli.go`, `make run-client`) and Rust (`src/main.rs`, `make run-rust-client`). Both connect to `localhost:4242`, ask for a username and send `CONNECT <username>`, and keep printing server events while waiting for input.
 
 **Command interface choice (subject V.3):** the subject allows either raw protocol commands or a friendlier translation layer. These clients pass input straight through as RFC protocol syntax (`MOVE north` is sent as `MOVE north`); commands are case-insensitive. The client only sends `CONNECT <username>` at startup and `QUIT` on Ctrl+C or Ctrl+D by itself.
 
@@ -95,17 +99,17 @@ OK {"name":"Dented Tankard","description":"A well-used tankard. Smells of dark a
 take dented tankard
 OK taken=item.dented_tankard
 talk george
-OK {"npc":"npc.george","dialogue":"Welcome, traveler. Mind the floorboards."}
+OK {"npc":"npc.george","dialogue":"Welcome, traveler. Don't see many strangers 'round these parts."}
 quest george
-OK {"quest_id":"quest.a_loaf_for_the_needy","description":"George seems to need help with his daily chores.","reward":{"key_item":"key_item.rusty_dagger"},"status":"available"}
+OK {"quest_id":"quest.a_loaf_for_the_needy","description":"George seems to need help with something.","reward":{"key_item":"key_item.rusty_dagger"},"status":"available"}
 quests
 OK [{"quest_id":"quest.a_loaf_for_the_needy","status":"active","progress":"0/2"}]
 talk george
-OK {"npc":"npc.george","dialogue":"Hey there! Be a champ and take this [keyitem.Loaf] to Kassandra for me, would you? Thanks! (You receive Loaf of Bread)"}
+OK {"npc":"npc.george","dialogue":"Say, could ya take this 🔑[Loaf of Bread] to Kassandra for me? Baked fresh this mornin'. (You receive Loaf of Bread)"}
 move east
 OK room=zone.fountain_square
 talk kassandra
-OK {"npc":"npc.kassandra","dialogue":"What's this, a loaf of bread? So George thinks to woo me with crumbs... (looks into your eyes...) Ah, so you're the one... This found its way to me this morning but now it has found its true owner."}
+OK {"npc":"npc.kassandra","dialogue":"What's this, a loaf of bread? So George thinks to woo me with crumbs... (looks into your eyes a moment too long) Those eyes... fate does tease me so... Here, this found its way to me this morning but now I see it was meant for you."}
 speterse receives Rusty Dagger.
 who
 OK {"room":["speterse"],"server":1}
@@ -117,24 +121,11 @@ OK {"hp":100,"max_hp":100,"status":"healthy"}
 
 ## GUI Client
 
-The GUI client (`GUI/`, Go with Fyne v2.8.1) is in progress. Its design (layout, elements, which subject requirement each one covers, refresh plan) is in [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
+The GUI client (`GUI/`, Go with Fyne v2.8.1) is described in the [GUI Functional Specification Document](FSD-GUI.md): layout, elements, design decisions, refresh plan and screenshots, plus a table mapping each subject V.4 requirement to the GUI element that covers it.
 
 - **Design:** one router goroutine owns the connection and all connection state; widget callbacks only send requests on channels, and widgets are updated through `fyne.Do`. `serverResponseParser.go` turns each server line into a typed reply.
 - **Login:** the name is trimmed and checked (2–10 characters) before anything is sent; server errors (e.g. `ERR 201 NAME_IN_USE`) are shown under the Connect button. A lost connection returns to the login screen.
-- **Built so far:**
-  - a pixel-art background image for each room
-  - a top row with an HP bar, the room name, and counters for players online and players in the room
-  - the player's status and gold (gold is refreshed after a gold reward)
-  - a LOOK button with a room details panel (description, players, NPCs, exits, items); while other players are in the room, LOOK is also polled every 3.5 seconds, so the panel stays current
-  - a DROP list (the inventory) and a TAKE list (the room's items): clicking an item drops or takes it, and the inventory updates right after each take or drop
-  - a battle log that opens during a fight (one entry per round, a divider per fight) and hides 5 seconds after it ends; a Battle Log button shows it again
-  - direction buttons for moving, disabled during a rate-limit timeout (`ERR 750`)
-  - separate chat and log windows; the chat window also shows NPC dialogue (in either TALK reply format) and fight announcements, and each line starts with an emoji showing its kind
-  - a text field for typing raw protocol commands
-  - a bottom section with chat buttons (Global, Room, Group, clear) and three button grids: GROUP (Create, Join, Invite, Leave), INTERACTIONS (Talk, Attack, Quest, Flee) and QUERIES (Inventory, Quests, Key Items, Who). Talk, Attack and Quest open a menu of the room's NPCs; chat, Invite and Join fill the text field for the rest of the command; Flee is enabled only during a fight
-  - Show/Hide UI and Quit buttons
-
-  Not built yet: the STATUS button, and disabling the other command buttons (not only the direction buttons) during a rate-limit timeout.
+- **Game screen:** a pixel-art background for each room, with overlays for the room details, the status panel, the battle log, separate chat and log windows, the d-pad and the TAKE and DROP item lists, plus a text field for raw protocol commands. Below the image, buttons cover every game action: chat, groups, talking, fighting, quests, inventory and more.
 - **Known limitation:** replies don't name the command they answer, and an empty list (`OK []`) looks the same for INVENTORY, KEYITEMS and QUESTS. The GUI matches it to the last of these three that was sent, so if two different ones are sent before the first reply arrives, the "None" line can name the wrong command.
 
 [↑ Back to top](#top)
@@ -166,7 +157,7 @@ All errors are sent as `ERR <code> <MESSAGE>`. **RFC** codes are used exactly as
 | 406 | `NO_QUEST_AVAILABLE` | RFC | NPC has no quest for the player |
 | 666 | `INVALID_COMMAND` | Server | Unknown command (RFC §9.3 asks for an error reply to malformed input) |
 | 666 | `COMMAND_NOT_AVAILABLE_IN_COMBAT` | Server | `MOVE`, `TAKE`, `DROP` or `QUEST` during a fight |
-| 670 | `INVALID_ARGS` / `MISSING_ARGS` | Server | Unexpected or missing arguments |
+| 670 | `INVALID_ARGS` / `MISSING_ARGS` | Server | Unexpected or missing arguments, or a control character in a `CHAT` message (RFC §9.2) |
 | 675 | `MESSAGE_TOO_LONG` | Server | Line longer than 1024 bytes |
 | 747 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_WARNING` | Server | Query rejected, query bucket empty; no timeout |
 | 750 | `EXCESSIVE_INPUT_DETECTED: TIMEOUT_APPLIED` | Server | 1-minute timeout; replies during it end with `Time remaining: <time>` |
@@ -185,17 +176,17 @@ The RFC and the subject PDF's example interactions (p.12) disagree on two replie
 | Command | RFC 42TAP | Subject PDF | This server |
 |---|---|---|---|
 | `WHO` | `OK players=<count>` | `OK { "room": ["alice", "bob"], "server": 5 }` | `OK {"room":["alice"],"server":1}` |
-| `TALK` | `OK Welcome to my bakery!` | `OK { "npc": "guard", "dialogue": "Stay safe, traveler." }` | `OK {"npc":"npc.george","dialogue":"Welcome, traveler. Mind the floorboards."}` |
+| `TALK` | `OK Welcome to my bakery!` | `OK { "npc": "guard", "dialogue": "Stay safe, traveler." }` | `OK {"npc":"npc.george","dialogue":"Welcome, traveler. Don't see many strangers 'round these parts."}` |
 
 - **WHO:** the JSON form gives clients both player counters required by the subject (V.4) in one reply.
 - **TALK:** the JSON form makes dialogue recognisable by its own shape and names the speaking NPC (by ID). Everything the NPC says is in `dialogue`, including the healer and quest suffixes below. The GUI client accepts both forms.
 
 ### QUEST, QUESTS and GROUP
 
-- **`QUEST <npc>`** offers and accepts in one step (RFC §6.1.2 leaves acceptance to the implementer): the NPC's next eligible quest is added to the player's list and returned with `"status":"available"`; `ERR 406` if there is none. `reward` is an object instead of the PDF's string, because a reward can be a key item, gold or both, and is `null` when there is none:
+- **`QUEST <npc>`** offers and accepts in one step: the NPC's next eligible quest is added to the player's list and returned with `"status":"available"`; `ERR 406` if there is none. `reward` is an object instead of the PDF's string, because a reward can be a key item, gold or both, and is `null` when there is none:
   ```
   C: QUEST george
-  S: OK {"quest_id":"quest.a_loaf_for_the_needy","description":"George seems to need help with his daily chores.","reward":{"key_item":"key_item.rusty_dagger"},"status":"available"}
+  S: OK {"quest_id":"quest.a_loaf_for_the_needy","description":"George seems to need help with something.","reward":{"key_item":"key_item.rusty_dagger"},"status":"available"}
   ```
 - **`QUESTS`** adds an optional `quest_items` field (`"held/needed"`) while the current step needs key items:
   ```
@@ -244,16 +235,18 @@ S: OK {"name":"Dented Tankard","description":"A well-used tankard. Smells of dar
 
 ### Stats and rounds
 
-- Players start with 100 HP, strength 7, battle skill 7 and dexterity 10. The Ornate Dagger quest reward adds +2 battle skill. NPC stats come from `world.yaml` (`hp`, `str`, `battle_skill`, `dex`).
+- Players start with 100 HP, strength 7 (base damage), battle skill 7 (extra random damage) and dexterity 10 (chance to dodge).
+  - Some quest rewards may raise the player's stats.
+- NPC stats come from `world.yaml` (`hp`, `str`, `battle_skill`, `dex`).
 - Each round, both sides roll a d6 for initiative (a tie goes to the player). Initiative only decides who strikes first; both sides attack, unless the first hit brings the other to 0 HP.
 - Damage is `strength + roll(1..battle_skill)` (8–14 for a player).
 - An attack is dodged completely if a 1–100 roll is not higher than the defender's dexterity (dex 10 = 10% dodge).
 
 ### Ending a fight
 
-- **Win:** the NPC is "defeated", not killed. Its fight HP was a per-fight copy, so it is available again at full HP. The room is told who won, and a quest waiting on that fight advances.
-- **Loss:** the player respawns in the chapel with half their max HP (rounded up) and receives `EVT RESPAWN room=zone.chapel`. A loss never fails a quest.
-- **`FLEE` or disconnect:** the fight ends early and the room is told.
+- **Win:** the NPC is "defeated", not killed. Its fight HP is handled on a per-fight basis, so it is available again at full HP after the battle. The room is told who won, and a quest waiting on that fight advances.
+- **Loss:** the player respawns in the chapel with half their max HP (rounded up) and receives `EVT RESPAWN room=zone.chapel`. The rest of the room hears the NPC's victory line, so they know it is free to fight again. A loss never fails a quest.
+- **`FLEE` or disconnect:** the fight ends early, and the rest of the room is told the battle ended, so they know the NPC is free again.
 
 ### Status and healing
 
@@ -265,7 +258,7 @@ S: OK {"name":"Dented Tankard","description":"A well-used tankard. Smells of dar
 - **Instanced fights** keep rounds sequential and fight state owned by one goroutine, with no interference from other players.
 - **Both sides attack every round**, so a lucky initiative roll helps without deciding the fight. Dexterity makes enemies feel different: the Cave Bat is weak but hard to hit.
 - **Defeated, not killed, and respawn at half HP:** enemies stay available to everyone, and losing is a setback rather than a failure.
-- **Balance** was tuned with a fight simulation: a full-HP player beats the Cave Bat (losing about 24 HP on average), and the Barbarian (90 HP) is the tougher fight.
+- **Balance** was tuned with a fight simulation: a full-HP player beats the Cave Bat (losing about 24 HP on average), and the Ruffian (90 HP) is the tougher fight.
 
 ### `ATTACK` response
 
@@ -290,11 +283,22 @@ Quests are defined in `world.yaml` and offered only through their quest-giver NP
 - **`enter_area`** (`MOVE`): entering the named room sends the step's message. Respawning there doesn't count.
 - **`battle`** (`ATTACK`): winning against the named NPC advances the step; a loss leaves it unchanged.
 
+A quest can also set an optional `reminder_dialogue`. When the player `TALK`s to the quest giver while the current step is elsewhere (another NPC, a room or a fight), the giver says this line instead of their normal lines; a matching `talk_to` step always takes priority.
+
 When the last step completes, the quest is marked completed and the reward is granted, each part announced with a plain-text line (e.g. `alice receives 20 gold.`).
 
 ### Key items
 
-Key items are per-player quest items (`key_items:` in `world.yaml`, IDs `key_item.<key>`), listed with `KEYITEMS`. They never appear in rooms and can't be taken or dropped, so every player gets their own copy without breaking the item-uniqueness rule. Two rules apply:
+Key items are per-player quest props listed with the custom `KEYITEMS` command.
+
+**Key items are not items.** They are only used to mark quest progress or as an object to visually represent stat boosts gained through game play, and are kept completely separate from the world's item system:
+
+- They are defined separately (`key_items:` in `world.yaml`), with their own ID prefix (`key_item.<key>`).
+- They never exist in rooms or in the `INVENTORY`, and `TAKE`, `DROP` and `LOOK` never see them: those commands only work with world items.
+
+The subject's item rules (unique instances, no duplication) apply to world items, and each world item exists exactly once. A key item works like a quest flag: every player who reaches the quest step gets their own copy, so two players on the same quest never block each other.
+
+Two rules apply:
 
 - **Step grants are temporary:** a key item given by a step must be taken back by a later step of the same quest (e.g. George's loaf, delivered to Kassandra).
 - **Rewards are kept** and can be required by any other quest: *Arms Dealer* takes the Rusty Dagger and Small Gem (rewards of Kassandra's two quests) and gives back the Ornate Dagger. It can be accepted early but not finished until the player holds both items.
@@ -306,12 +310,12 @@ One quest from `server/world.yaml` (dialogue shortened):
 ```yaml
 a_loaf_for_the_needy:
   name: A loaf for the needy
-  description: George seems to need help with his daily chores.
+  description: George seems to need help with something.
   type: delivery
   requires: ""
   steps:
     - talk_to: george
-      dialogue: "Hey there! Be a champ and take this [keyitem.Loaf] to Kassandra for me, would you? Thanks!"
+      dialogue: "Say, could ya take this 🔑[Loaf of Bread] to Kassandra for me? Baked fresh this mornin'."
       grants_key_items:
         - "key_item.loaf_of_bread"
     - talk_to: kassandra
@@ -343,17 +347,26 @@ A small, light-hearted fantasy town, defined in `server/world.yaml`. New players
 | Market Square (`market_square`) | north → Fountain Square, east → Mill, west → Smithy | Bertha |
 | Smithy (`smithy`) | east → Market Square | Brannoc |
 | Mill (`mill`) | north → Old Well, east → Fallow Field, west → Market Square | Hilde |
-| Fallow Field (`fallow_field`) | west → Mill | Barbarian |
+| Fallow Field (`fallow_field`) | west → Mill | Ruffian |
 
 Two loops share the Old Well (Fountain Square → Chapel → Churchyard → Old Well, and Fountain Square → Market Square → Mill → Old Well), with three dead-end branches (Cistern, Smithy, Fallow Field). Every room has an NPC or a fixed item.
 
 ### NPCs, items and quests
 
-- **NPCs (9, 4 roles):** quest givers George, Kassandra, Bertha and Brannoc; healer Father Tieu; general NPCs Osric and Hilde, who cycle through their lines; enemies the Barbarian (90 HP) and the Cave Bat (36 HP, but dex 30).
-- **Items (19, 7 obtainable):** Dented Tankard, Empty Coin Purse, Prayer Candle, Wooden Bucket, Metal Shavings, Handful of Wheat Husks and Field Flower can be taken; the rest (e.g. Weathered Fountain, Anvil, Water Wheel) are fixed scenery. Key items: Loaf of Bread, Rusty Dagger, Small Gem, Ornate Dagger.
+- **NPCs (9, 4 roles):**
+  - Quest givers: George, Kassandra, Bertha, Brannoc
+  - Healer: Father Tieu
+  - General (cycle through their lines): Osric, Hilde
+  - Enemies: Ruffian (90 HP), Cave Bat (36 HP, but dex 30)
+- **Items (19, 7 obtainable):**
+  - Can be taken: Dented Tankard, Empty Coin Purse, Prayer Candle, Wooden Bucket, Metal Shavings, Handful of Wheat Husks, Field Flower
+  - Fixed scenery: Old Lute, Wanted Poster, Weathered Fountain, Bell Rope, Gravedigger's Shovel, Rusted Winch, Etched Wall Marks, Bertha's Stall, Notice Board, Anvil, Water Wheel, Broken Fence
+- **Key items (4, quest props, not world items):**
+  - Given and taken back within a quest: Loaf of Bread
+  - Quest rewards: Rusty Dagger, Small Gem, Ornate Dagger
 - **Quests (4):**
   - *A loaf for the needy* (George): deliver bread to Kassandra. Reward: Rusty Dagger.
-  - *Something in the Well* (Kassandra, requires the first quest): find what makes noise in the well. Reward: Small Gem and 20 gold.
+  - *Something in the Well* (Kassandra, after *A loaf for the needy*): find what makes noise in the well. Reward: Small Gem and 20 gold.
   - *A Lesson in Manners* (Bertha): defeat the brute who wrecked her stall. Reward: 10 gold.
   - *Arms Dealer* (Brannoc): bring the Rusty Dagger and Small Gem. Reward: Ornate Dagger (+2 battle skill).
 
@@ -385,7 +398,7 @@ Structured JSON logging with `log/slog`, one object per line on stderr, with `IN
 - **Replies and events sent:** `SYS_MESSAGE` with the `message` and its `player` or `recipient`.
 - **Connections:** `PLAYER_CONNECTED`, `PLAYER_QUIT`, `CONNECTION_CLOSED_BY_CLIENT`, `CONNECTION_CLOSED_SAFELY`, `CONNECTION_IDLE_TIMEOUT_ERROR`, `CONNECTION_READ_ERROR`, `SET_READ_DEADLINE_ERROR`, `PLAYER_CLEANUP_COMPLETE`.
 - **Startup and shutdown:** `WORLD_DATA_VALIDATED`, `MAP_CONNECTIVITY_VALIDATED`, `MAP_LOOP_VALIDATED`, `SHUTDOWN_SIGNAL_RECEIVED`, `PERFORMING_CLEANUP`, `SERVER_SHUTTING_DOWN`; world validation problems at `ERROR`.
-- **Abuse:** timeouts, bans, oversized lines and connection floods at `WARN`.
+- **Abuse:** timeouts, bans, oversized lines, connection floods and control characters in chat at `WARN`.
 
 ### Monitoring and detecting abuse
 
@@ -399,6 +412,7 @@ grep -E 'ERR (675|747|750|760)' server.log     # rate-limit, line-length and ban
 - **Command flooding:** `ERR 747` and `ERR 750` in the `message` of `WARN` lines, with `player` and `remote`; `time_remaining` shows how long a timeout lasts, and `"reason":"query bucket flooding"` marks a timeout caused by queries. `ERR 747` is logged for the first rejection in a window and then every 5th.
 - **Oversized lines:** `ERR 675 MESSAGE_TOO_LONG` for the first one, and an entry ending in `5TH_STRIKE_CLOSING_CONNECTION` when the connection is closed.
 - **Bans:** `ERR 760 SOFTBANNED_FROM_SERVER` with the `remote` address. Several `ERR 750` lines for one player followed by `ERR 760` show a client that ignored its timeout.
+- **Control characters:** a `CHAT` message containing one (e.g. a terminal escape sequence) is rejected with `ERR 670` and logged with `"reason":"escape character(s) in message"` and the message, which the JSON log escapes (ESC becomes `\u001b`).
 
 [↑ Back to top](#top)
 
@@ -408,9 +422,9 @@ TAP is designed for 2–3 learners. As no eligible peers were available, I compl
 
 - **Server** (Go): protocol, world loading and validation, combat, quests
 - **CLI clients**: Go and Rust versions
-- **GUI client** (Go, Fyne): in progress
+- **GUI client** (Go, Fyne)
 - **World design**: rooms, NPCs, items, dialogue and quests
-- **Documentation**: this README and the GUI design record
+- **Documentation**: this README and the GUI Functional Specification Document.
 
 [↑ Back to top](#top)
 
@@ -428,8 +442,8 @@ From the repository root:
 |---|---|
 | `make install` | Downloads Go modules and builds the server, both CLI clients and the GUI client |
 | `make run-server` | Starts the server on TCP port 4242 (reads `server/world.yaml`) |
-| `make run-client` | Starts the Rust CLI client |
-| `make run-go-client` | Starts the Go CLI client |
+| `make run-client` | Starts the Go CLI client |
+| `make run-rust-client` | Starts the Rust CLI client |
 | `make run-client-gui` | Starts the GUI client |
 | `make lint` | `go vet` on the server, Go CLI and GUI; `cargo check` on the Rust CLI |
 | `make clean` | `go clean` / `cargo clean` |
@@ -440,7 +454,7 @@ From the repository root:
 
 ## Testing
 
-NPCs and items can be named by display name (case-insensitive, e.g. `ATTACK cave bat`) or full ID (`npc.cave_bat`).
+The commands below use display names (case-insensitive); full IDs such as `npc.cave_bat` work too.
 
 ### Multiplayer
 
@@ -448,19 +462,19 @@ Run several CLI clients with different names. Check `WHO`, `CHAT ROOM`/`GLOBAL`/
 
 ### Combat
 
-Go to the Fallow Field (from the Taverne: east, south, east, east) and `ATTACK barbarian` until the fight ends. During the fight, `MOVE` is refused (`666`) and a second client's `ATTACK barbarian` is refused (`405`). Lose a fight to check the respawn in the chapel at half HP, then `TALK father tieu` and check `STATUS`. Try `FLEE` mid-fight.
+Go to the Fallow Field (from the Taverne: east, south, east, east) and `ATTACK ruffian` until the fight ends. During the fight, `MOVE` is refused (`666`) and a second client's `ATTACK ruffian` is refused (`405`). Lose a fight to check the respawn in the chapel at half HP, then `TALK father tieu` and check `STATUS`. Try `FLEE` mid-fight.
 
 ### Quests
 
 1. Taverne: `QUEST george`, then `TALK george`; the dialogue ends with `(You receive Loaf of Bread)` and `KEYITEMS` lists the loaf.
 2. Fountain Square: `TALK kassandra` hands over the loaf and completes the quest; `QUESTS` shows it as completed.
-3. `QUEST kassandra` accepts *Something in the Well*; `TALK kassandra`.
+3. `QUEST kassandra` accepts *Something in the Well*; `TALK kassandra`, then `TALK kassandra` again before leaving: she now gives her reminder line.
 4. `MOVE east` into the Old Well shows the eerie-sounds message.
 5. `MOVE down` and `ATTACK cave bat` until it is defeated.
 6. Back in Fountain Square, `TALK kassandra` completes the quest; `GOLD` shows 20.
 7. Smithy: `QUEST brannoc`, `TALK brannoc` (hint), `TALK brannoc` again hands over the dagger and gem and gives the Ornate Dagger with `+2 BattleSkill`.
 
-*Arms Dealer* can also be accepted early: `TALK brannoc` then gives his missing-items line, and `QUESTS` shows `"quest_items":"0/2"` or `"1/2"`. *A Lesson in Manners* works like the Cave Bat quest, with Bertha and the Barbarian.
+*Arms Dealer* can also be accepted early: `TALK brannoc` then gives his missing-items line, and `QUESTS` shows `"quest_items":"0/2"` or `"1/2"`. *A Lesson in Manners* works like the Cave Bat quest, with Bertha and the Ruffian.
 
 ### EXAMINE
 
@@ -468,7 +482,16 @@ Go to the Fallow Field (from the Taverne: east, south, east, east) and `ATTACK b
 
 ### GUI
 
-`make run-client-gui` with the server running. A name that is empty or one character long is refused without contacting the server; a name in use shows `ERR 201`; stopping the server brings back the login screen. In game, click an item in the TAKE list to take it and in the DROP list to drop it; a second client in the same room sees the change within 3.5 seconds. TALK, ATTACK and QUEST open a menu of the room's NPCs; Show/Hide UI hides the overlays and shows them again as they were. `ATTACK` on the Cave Bat in the Cistern opens the battle log and enables Flee. Compare the game screen with [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md).
+Start the server, then `make run-client-gui`.
+
+- **Login:** an empty or one-character name is refused without contacting the server; a name already in use shows `ERR 201`.
+- **Connection loss:** stopping the server returns the GUI to the login screen.
+- **Room and movement:** the d-pad only enables the room's exits; STATUS opens the status panel (status, gold, In Party); Show/Hide UI hides the overlays and restores them as they were.
+- **Items:** clicking an item in the TAKE list takes it, and in the DROP list drops it; a second client in the same room sees the change within 3.5 seconds.
+- **NPCs and combat:** TALK, ATTACK and QUEST open a menu of the room's NPCs; attacking the Cave Bat in the Cistern opens the battle log and enables Flee.
+- **Groups (two clients):** `GROUP CREATE` and `GROUP JOIN` set In Party to ✔️ and enable the P chat button; when the leader leaves, both reset for every member.
+
+Compare the game screen with the [GUI Functional Specification Document](FSD-GUI.md).
 
 ### World validation
 
@@ -478,11 +501,18 @@ Break `world.yaml` on purpose (an exit to a missing room, a direction like `nort
 
 ## Resources
 
-- RFC 42TAP (attached protocol spec): commands, events and error codes
-- [`TAP_GUI_HUD_FSD.md`](TAP_GUI_HUD_FSD.md): design record for the GUI client
-- Go documentation: [`net`](https://pkg.go.dev/net), [`log/slog`](https://pkg.go.dev/log/slog), [`sync`](https://pkg.go.dev/sync), [`gopkg.in/yaml.v3`](https://pkg.go.dev/gopkg.in/yaml.v3)
-- Fyne: [documentation](https://docs.fyne.io/) and [API reference](https://pkg.go.dev/fyne.io/fyne/v2)
-- Rust crates: [`anyhow`](https://docs.rs/anyhow), [`ctrlc`](https://docs.rs/ctrlc)
+- RFC 42TAP, the protocol spec (commands, events and error codes): [`Resources/protocol-rfc.html`](Resources/protocol-rfc.html) (original), with corrected copies of [section 5](Resources/tap_rfc_5_commands.html) and [section 6.2](Resources/tap_rfc_6.2_events.html), where placeholders were hidden by the HTML
+- [GUI Functional Specification Document](FSD-GUI.md): layout and design decisions for the GUI client
+- Go:
+  - [A Tour of Go](https://go.dev/tour/), [Effective Go](https://go.dev/doc/effective_go) and [The Go Memory Model](https://go.dev/ref/mem)
+  - Standard library: [`net`](https://pkg.go.dev/net), [`bufio`](https://pkg.go.dev/bufio), [`sync`](https://pkg.go.dev/sync), [`log/slog`](https://pkg.go.dev/log/slog) (with the [slog blog post](https://go.dev/blog/slog)), [`encoding/json`](https://pkg.go.dev/encoding/json), [`os/signal`](https://pkg.go.dev/os/signal), [`context`](https://pkg.go.dev/context), [`math/rand/v2`](https://pkg.go.dev/math/rand/v2), [`slices`](https://pkg.go.dev/slices), [`unicode/utf8`](https://pkg.go.dev/unicode/utf8), [`embed`](https://pkg.go.dev/embed), [`image/png`](https://pkg.go.dev/image/png)
+  - [`gopkg.in/yaml.v3`](https://pkg.go.dev/gopkg.in/yaml.v3)
+- Fyne: [documentation](https://docs.fyne.io/), [API reference](https://pkg.go.dev/fyne.io/fyne/v2), [goroutines and `fyne.Do`](https://docs.fyne.io/started/goroutines/); for the button themes, [custom themes](https://docs.fyne.io/extend/custom-theme/), [`fyne.Theme`](https://pkg.go.dev/fyne.io/fyne/v2#Theme) and [`container.NewThemeOverride`](https://pkg.go.dev/fyne.io/fyne/v2/container#NewThemeOverride)
+- Rust:
+  - [The Rust Book, message passing](https://doc.rust-lang.org/book/ch16-02-message-passing.html)
+  - Standard library: [`std::net::TcpStream`](https://doc.rust-lang.org/std/net/struct.TcpStream.html), [`std::sync::mpsc`](https://doc.rust-lang.org/std/sync/mpsc/), [`std::io::BufReader`](https://doc.rust-lang.org/std/io/struct.BufReader.html)
+  - Crates: [`anyhow`](https://docs.rs/anyhow), [`ctrlc`](https://docs.rs/ctrlc)
+- Tools: [golangci-lint](https://golangci-lint.run/)
 
 ### AI Usage
 
@@ -495,7 +525,7 @@ AI (Claude) was used during development for:
 - Simulating fights to balance enemy stats
 - Reviewing code: the login path, rate limiting, `EXAMINE`, `KEYITEMS`, `quest_items`, and checking `world.yaml` for broken references
 - Checking the server's replies and events against the RFC and the subject PDF
-- GUI client: explaining Fyne's API and Go concurrency patterns, and reviewing the connection layer, parser, game screen, battle log, item lists and bottom section
+- GUI client: explaining Fyne's API and Go concurrency patterns, and reviewing the connection layer, parser, game screen, battle log, item lists, bottom section, pop-up menus and button themes
 - Drafting and formatting this README and the GUI design record, and checking them against the subject and the code
 
 [↑ Back to top](#top)

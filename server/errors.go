@@ -31,7 +31,7 @@ var (
 	InGroupErr    = ProtocolError{Code: 402, ErrorMessage: "ALREADY_IN_GROUP"}
 )
 
-// Not-found errors.
+// Item, NPC and quest errors.
 var (
 	NotObtainableErr  = ProtocolError{Code: 403, ErrorMessage: "ITEM_NOT_OBTAINABLE"}
 	ItemNotFoundErr   = ProtocolError{Code: 404, ErrorMessage: "ITEM_NOT_FOUND"}

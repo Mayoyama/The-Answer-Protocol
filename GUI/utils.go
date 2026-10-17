@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 )
 
+// Capitalize returns s with its first letter in upper case and the rest in lower case.
 func Capitalize(s string) string {
 	if s == "" {
 		return ""
@@ -19,6 +20,7 @@ func Capitalize(s string) string {
 	return capitalized
 }
 
+// SplitSnakeCase turns snake_case into capitalised words, e.g. "old_well" becomes "Old Well".
 func SplitSnakeCase(s string) string {
 	if s == "" {
 		return ""
@@ -32,19 +34,21 @@ func SplitSnakeCase(s string) string {
 		if i > 0 {
 			noSnake += " "
 		}
+
 		noSnake += Capitalize(w)
 	}
 
 	return noSnake
 }
 
+// IDToLabel turns an ID into a display label: it removes a known prefix (item., npc., …)
+// and converts the rest from snake case.
 func IDToLabel(id string) string {
 	if id == "" {
 		return ""
 	}
 
 	name := id
-
 	name = strings.TrimPrefix(name, "item.")
 	name = strings.TrimPrefix(name, "key_item.")
 	name = strings.TrimPrefix(name, "npc.")
@@ -56,6 +60,7 @@ func IDToLabel(id string) string {
 	return SplitSnakeCase(name)
 }
 
+// buildQuestLine formats one QUESTS entry as "Name (Status) - Steps: x - Items: y".
 func buildQuestLine(q QuestsParse) string {
 	qLine := fmt.Sprintf("%s (%s)", IDToLabel(q.QuestID), Capitalize(q.Status))
 
@@ -64,7 +69,7 @@ func buildQuestLine(q QuestsParse) string {
 	}
 
 	if q.QuestItems != "" {
-		qLine += fmt.Sprintf((" - Items: %s"), q.QuestItems)
+		qLine += fmt.Sprintf(" - Items: %s", q.QuestItems)
 	}
 
 	return qLine

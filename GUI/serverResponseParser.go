@@ -7,8 +7,10 @@ import (
 	"strings"
 )
 
+// ReplyType identifies the kind of server line parseServerReply found.
 type ReplyType int
 
+// ReplyType values returned by parseServerReply.
 const (
 	ReplyIgnore ReplyType = iota
 	ReplyEmptyList
@@ -36,12 +38,12 @@ const (
 	ReplyError
 )
 
+// ReplyContent is a parsed server line; Type says which field holds its data.
 type ReplyContent struct {
 	Type           ReplyType
 	Look           LookParse
 	Who            WhoParse
 	Status         StatusParse
-	HPHeal         HealParse
 	Presence       PresenceParse
 	ServerCount    int
 	Quest          SingleQuestParse
@@ -66,6 +68,7 @@ type ReplyContent struct {
 	Other          string
 }
 
+// LookParse is the LOOK reply.
 type LookParse struct {
 	Room    RoomParse `json:"room"`
 	Players []string  `json:"players"`
@@ -73,6 +76,7 @@ type LookParse struct {
 	NPCs    []string  `json:"npcs"`
 }
 
+// RoomParse is the room part of a LOOK reply.
 type RoomParse struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
@@ -80,22 +84,20 @@ type RoomParse struct {
 	Exits       map[string]string `json:"exits"`
 }
 
+// WhoParse is the WHO reply, in the subject PDF's JSON form.
 type WhoParse struct {
 	Room   []string `json:"room"`
 	Server int      `json:"server"`
 }
 
+// StatusParse is the STATUS reply.
 type StatusParse struct {
 	HP     int    `json:"hp"`
 	MaxHP  int    `json:"max_hp"`
 	Status string `json:"status"`
 }
 
-type HealParse struct {
-	HealMessage string `json:"heal_message,omitempty"`
-	HealAmount  int    `json:"heal_amount,omitempty"`
-}
-
+// SingleQuestParse is the QUEST reply.
 type SingleQuestParse struct {
 	QuestID     string      `json:"quest_id"`
 	Description string      `json:"description"`
@@ -103,11 +105,13 @@ type SingleQuestParse struct {
 	Status      string      `json:"status"`
 }
 
+// RewardParse is a quest reward: gold, a key item, or both.
 type RewardParse struct {
 	Gold    int    `json:"gold,omitempty"`
 	KeyItem string `json:"key_item,omitempty"`
 }
 
+// QuestsParse is one entry of the QUESTS reply.
 type QuestsParse struct {
 	QuestID    string `json:"quest_id"`
 	Status     string `json:"status"`
@@ -115,10 +119,13 @@ type QuestsParse struct {
 	QuestItems string `json:"quest_items"`
 }
 
+// InventoryParse is the INVENTORY reply: a list of item IDs.
 type InventoryParse []string
 
+// KeyItemParse is the KEYITEMS reply: a list of key item IDs.
 type KeyItemParse []string
 
+// ExamineParse is the EXAMINE reply.
 type ExamineParse struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -126,6 +133,7 @@ type ExamineParse struct {
 	NPCRole     string `json:"npc_role,omitempty"`
 }
 
+// AttackParse is the reply to one ATTACK round.
 type AttackParse struct {
 	PlayerInitRoll int    `json:"attacker_init_roll"`
 	TargetInitRoll int    `json:"target_init_roll"`
@@ -140,38 +148,46 @@ type AttackParse struct {
 	PlayerStatus   string `json:"status"`
 }
 
+// ErrParse is an ERR line's code and text.
 type ErrParse struct {
 	Text string
 	Code int
 }
 
+// TakeDropItemParse is an "OK taken=" or "OK dropped=" reply.
 type TakeDropItemParse struct {
 	Action string
 	Item   string
 }
 
+// GroupActionParse is a group reply or event: the action and the player it names.
 type GroupActionParse struct {
 	Action string
 	ByWho  string
 }
 
+// ChatParse is a chat event: scope, sender and message.
 type ChatParse struct {
 	Scope   string
 	Sender  string
 	Message string
 }
 
+// TalkParse is the JSON form of the TALK reply.
 type TalkParse struct {
 	NPC      string `json:"npc"`
 	Dialogue string `json:"dialogue"`
 }
 
+// PresenceParse is a room presence event: ENTER or LEAVE, and the player.
 type PresenceParse struct {
 	Direction string
 	Who       string
 }
 
-func ParseServerReply(reply string) (ReplyContent, error) {
+// parseServerReply turns one server line into a ReplyContent. Lines it doesn't
+// recognise become ReplyOther, holding the raw line.
+func parseServerReply(reply string) (ReplyContent, error) {
 	toParse := strings.TrimSpace(reply)
 	toUnmarshal := strings.TrimSpace(strings.TrimPrefix(toParse, "OK "))
 
@@ -212,7 +228,6 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 
 	case strings.HasPrefix(toParse, "OK {\"room\"") || strings.HasPrefix(toParse, "OK { \"room\""):
 		if strings.Contains(toParse, "\"server\"") {
-
 			if err := json.Unmarshal([]byte(toUnmarshal), &who); err != nil {
 				return ReplyContent{}, err
 			}
@@ -284,6 +299,7 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 		if len(parts) != 5 {
 			return ReplyContent{}, errors.New("malformed presence event: " + toParse)
 		}
+
 		return ReplyContent{Type: ReplyPresence, Presence: PresenceParse{Direction: parts[3], Who: parts[4]}}, nil
 
 	case strings.HasPrefix(toParse, "EVT STATS players="):
@@ -407,6 +423,7 @@ func ParseServerReply(reply string) (ReplyContent, error) {
 	}
 }
 
+// isGoldReward matches "<name> receives <n> gold." and returns the name and amount.
 func isGoldReward(line string) (string, int, bool) {
 	parts := strings.Fields(line)
 
@@ -427,6 +444,7 @@ func isGoldReward(line string) (string, int, bool) {
 	return parts[0], amount, true
 }
 
+// isKeyItemReward matches "<name> receives <item>." and returns the name and item.
 func isKeyItemReward(line string) (string, string, bool) {
 	noDot := strings.TrimSuffix(line, ".")
 	parts := strings.Fields(noDot)

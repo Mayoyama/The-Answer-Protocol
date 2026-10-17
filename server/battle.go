@@ -76,10 +76,10 @@ func resolveAttackRequest(target string, player *Player) error {
 		if !ok {
 			return InternalErr
 		}
+
 		battle = fight
 
 	} else {
-
 		currLoc := player.getZoneID()
 		currZone, ok := getZoneObj(currLoc)
 
@@ -201,7 +201,6 @@ func resolveAttackRequest(target string, player *Player) error {
 				}
 
 				return nil
-
 			}
 		}
 
@@ -213,12 +212,13 @@ func resolveAttackRequest(target string, player *Player) error {
 
 // canBeFought reports whether the NPC is attackable and free, marking it occupied if so.
 func (enemy *NPC) canBeFought() error {
-
 	enemy.NPCMu.Lock()
 	defer enemy.NPCMu.Unlock()
+
 	if enemy.Attackable {
 		if enemy.Role == Enemy && !enemy.Occupied {
 			enemy.Occupied = true
+
 			return nil
 		}
 

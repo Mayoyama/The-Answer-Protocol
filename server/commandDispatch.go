@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// queryCmds are the read-only commands that use the query bucket instead of the main one.
 var queryCmds = []string{"LOOK", "WHO", "STATUS", "GOLD"}
 
 // handleInternalError reports an internal error to the client and closes the connection.
@@ -104,6 +105,7 @@ func commandDispatch(command, args string, loginState *LoginStatus, player *Play
 	}
 
 	softBanned, timeRemaining := player.isOnTimeout(time.Now())
+
 	if softBanned {
 		player.handleSoftban(timeRemaining.Round(time.Second))
 

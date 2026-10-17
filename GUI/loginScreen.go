@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 )
 
+// LoginScreen holds the login screen's widgets.
 type LoginScreen struct {
 	Content      *fyne.Container
 	ConnErr      *widget.Label
@@ -15,6 +16,8 @@ type LoginScreen struct {
 	LoginContent *widget.Label
 }
 
+// buildLoginScreen builds the login screen. Connect checks the name is 2–10 characters
+// before passing it to the router.
 func buildLoginScreen(loginRequests chan<- string) *LoginScreen {
 	ls := &LoginScreen{}
 
@@ -54,6 +57,8 @@ func buildLoginScreen(loginRequests chan<- string) *LoginScreen {
 	return ls
 }
 
+// handleLoginRequest dials the server if needed and sends CONNECT, or keeps the name
+// until the server's greeting arrives.
 func (cr *CommandRouter) handleLoginRequest(name string) {
 	if cr.tc == nil {
 		newConn, err := dialServer()
@@ -81,6 +86,7 @@ func (cr *CommandRouter) handleLoginRequest(name string) {
 	}
 }
 
+// handleServerErr returns to the login screen after a lost connection and resets the session.
 func (cr *CommandRouter) handleServerErr(err error) {
 	fyne.Do(func() {
 		cr.Login.LoginContent.SetText("Connect to TAP Server")
@@ -94,6 +100,7 @@ func (cr *CommandRouter) handleServerErr(err error) {
 	cr.resetServerState()
 }
 
+// showErr shows message under the Connect button and enables the button again.
 func (ls *LoginScreen) showErr(message string) {
 	fyne.Do(func() {
 		ls.ConnErr.SetText(message)

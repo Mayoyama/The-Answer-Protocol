@@ -3,9 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
-	"strings"
-
 	"gopkg.in/yaml.v3"
+	"strings"
 )
 
 // YmlData is the top-level structure of world.yaml.
@@ -60,12 +59,13 @@ type ParseNPC struct {
 
 // ParseQuest is a quest entry as read from world.yaml.
 type ParseQuest struct {
-	Name        string       `yaml:"name"`
-	Description string       `yaml:"description"`
-	Type        string       `yaml:"type"`
-	Steps       []*QuestStep `yaml:"steps"`
-	Reward      *Reward      `yaml:"reward"`
-	Requires    string       `yaml:"requires"`
+	Name         string       `yaml:"name"`
+	Description  string       `yaml:"description"`
+	Type         string       `yaml:"type"`
+	Steps        []*QuestStep `yaml:"steps"`
+	Reward       *Reward      `yaml:"reward"`
+	Requires     string       `yaml:"requires"`
+	ReminderText string       `yaml:"reminder_dialogue"`
 }
 
 // QuestStep wraps a single quest step, decoded into its concrete QuestAction via UnmarshalYAML.
@@ -211,13 +211,14 @@ func ParseYmlData(data []byte) error {
 		}
 
 		newQuest := Quest{
-			Name:        quest.Name,
-			QuestID:     "quest." + key,
-			Description: quest.Description,
-			Type:        questType,
-			Steps:       steplist,
-			Reward:      quest.Reward,
-			Requires:    quest.Requires,
+			Name:         quest.Name,
+			QuestID:      "quest." + key,
+			Description:  quest.Description,
+			Type:         questType,
+			Steps:        steplist,
+			Reward:       quest.Reward,
+			Requires:     quest.Requires,
+			ReminderText: quest.ReminderText,
 		}
 
 		questObjList[key] = &newQuest
@@ -317,11 +318,11 @@ func ParseYmlData(data []byte) error {
 
 			newLoc.Items[nm.ItemID] = nm
 			nm.BaseLoc = &newLoc
-
 		}
 
 		for _, npc := range zone.Spawns {
 			n, ok := npcs[npc]
+
 			if !ok {
 				return fmt.Errorf("PARSING_ERROR: %s %s, LOCATION: %s", NPCNotFoundErr.ErrorMessage, npc, newLoc.ZoneID)
 			}

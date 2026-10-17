@@ -73,6 +73,7 @@ func (p *Player) getPlayerGroupInfo() *Group {
 // getNPCObject resolves an NPC by name and confirms it's present in this zone.
 func (z *Zone) getNPCObject(name string) (*NPC, bool) {
 	n, ok := resolveNPC(name)
+
 	if !ok {
 		return nil, false
 	}
@@ -108,6 +109,7 @@ func (n *NPC) getNPCID() string {
 func (n *NPC) getNPCRole() string {
 	n.NPCMu.Lock()
 	defer n.NPCMu.Unlock()
+
 	switch n.Role {
 	case General:
 		return "general"
